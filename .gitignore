@@ -52,3 +52,4 @@ wandb/
 
 # Temporary launch-time staging copies of configs (hard-coded GPU ids).
 /configs/_launch_staging_*
+.cursor/

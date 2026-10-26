@@ -12,6 +12,9 @@ export OMP_NUM_THREADS=4 OPENBLAS_NUM_THREADS=4
 unset ROCR_VISIBLE_DEVICES
 ql_python=$(command -v python)
 mkdir -p "$root"
+# Only for unpooled GPUs: do not join the slot pool's default MPS server.
+# CUDA falls back to normal direct execution when this socket is absent.
+export CUDA_MPS_PIPE_DIRECTORY="$root/direct-cuda"
 git rev-parse HEAD > "$root/code-revision.txt"
 printf 'START host=%s devices=%s backup=%s\n' "$(hostname)" "$CUDA_VISIBLE_DEVICES" "$backup"
 nvidia-smi --query-gpu=index,memory.used,memory.total,utilization.gpu --format=csv

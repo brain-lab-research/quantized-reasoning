@@ -14,7 +14,8 @@ MODELS = {
 
 
 def make_config(root: Path, benchmark: str, precision: str, start: int, count: int,
-                memory_utilization: float = 0.45, batch_size: int = 8) -> dict:
+                memory_utilization: float = 0.45, batch_size: int = 8,
+                kv_cache_gib: float | None = None) -> dict:
     name = f"{root.name[:4]}-{benchmark}-{precision}-{start:04d}"
     return {
         "experiment_name": name,
@@ -35,6 +36,8 @@ def make_config(root: Path, benchmark: str, precision: str, start: int, count: i
                 "tensor_parallel_size": 1, "gpu_memory_utilization": memory_utilization,
                 "max_model_len": 36864, "max_num_seqs": batch_size,
                 "enable_prefix_caching": True, "enforce_eager": True,
+                **({"kv_cache_memory_bytes": int(kv_cache_gib * 1024**3)}
+                   if kv_cache_gib is not None else {}),
             },
             "generation_params": {
                 "max_new_tokens": 32768, "temperature": 0.6,
@@ -66,6 +69,7 @@ def main() -> None:
     parser.add_argument("--root", type=Path, required=True)
     parser.add_argument("--memory-utilization", type=float, default=0.45)
     parser.add_argument("--batch-size", type=int, default=8)
+    parser.add_argument("--kv-cache-gib", type=float, default=None)
     args = parser.parse_args()
     root = args.root.resolve()
     root.mkdir(parents=True, exist_ok=True)
@@ -77,7 +81,7 @@ def main() -> None:
         for start in starts:
             for precision in ("fp16", "w2"):
                 cfg = make_config(root, benchmark, precision, start, 100,
-                                  args.memory_utilization, args.batch_size)
+                                  args.memory_utilization, args.batch_size, args.kv_cache_gib)
                 validated = ExperimentConfig.model_validate(cfg)
                 assert validated.pipeline_max_total_tokens == 32768
                 exp = root / cfg["experiment_name"]

@@ -42,9 +42,9 @@ finish() {
 }
 trap finish EXIT
 trap 'exit 143' TERM INT
-"$ql_python" "$repo/h200/prepare.py" --root "$root" --memory-utilization 0.25 --batch-size 4
+"$ql_python" "$repo/h200/prepare.py" --root "$root" --memory-utilization 0.25 --batch-size 4 --kv-cache-gib 12
 for precision in fp16 w2; do
-    "$ql_python" "$repo/h200/smoke.py" --precision "$precision" --output "$root/smoke-$precision.json" --memory-utilization 0.25 --batch-size 4 > "$root/smoke-$precision.log" 2>&1
+    "$ql_python" "$repo/h200/smoke.py" --precision "$precision" --output "$root/smoke-$precision.json" --memory-utilization 0.25 --batch-size 4 --kv-cache-gib 12 > "$root/smoke-$precision.log" 2>&1
     printf 'SMOKE_OK %s\n' "$precision"
     sync_once
 done

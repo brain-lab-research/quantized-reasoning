@@ -19,12 +19,15 @@ def main() -> None:
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--memory-utilization", type=float, default=0.45)
     parser.add_argument("--batch-size", type=int, default=8)
+    parser.add_argument("--kv-cache-gib", type=float, default=None)
     args = parser.parse_args()
     backend = VLLMBackend(
         model_id=MODELS[args.precision], precision=PrecisionMode.FP16,
         quantization=QuantizationMethod.GPTQ if args.precision == "w2" else QuantizationMethod.NONE,
         tensor_parallel_size=1, gpu_memory_utilization=args.memory_utilization,
         max_model_len=36864, max_num_seqs=args.batch_size, enforce_eager=True,
+        **({"kv_cache_memory_bytes": int(args.kv_cache_gib * 1024**3)}
+           if args.kv_cache_gib is not None else {}),
     )
     started = time.monotonic()
     backend.load()

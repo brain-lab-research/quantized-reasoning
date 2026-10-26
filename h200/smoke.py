@@ -17,12 +17,14 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--precision", choices=MODELS, required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--memory-utilization", type=float, default=0.45)
+    parser.add_argument("--batch-size", type=int, default=8)
     args = parser.parse_args()
     backend = VLLMBackend(
         model_id=MODELS[args.precision], precision=PrecisionMode.FP16,
         quantization=QuantizationMethod.GPTQ if args.precision == "w2" else QuantizationMethod.NONE,
-        tensor_parallel_size=1, gpu_memory_utilization=0.45,
-        max_model_len=36864, max_num_seqs=8, enforce_eager=True,
+        tensor_parallel_size=1, gpu_memory_utilization=args.memory_utilization,
+        max_model_len=36864, max_num_seqs=args.batch_size, enforce_eager=True,
     )
     started = time.monotonic()
     backend.load()

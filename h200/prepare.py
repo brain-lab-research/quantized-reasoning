@@ -13,7 +13,8 @@ MODELS = {
 }
 
 
-def make_config(root: Path, benchmark: str, precision: str, start: int, count: int) -> dict:
+def make_config(root: Path, benchmark: str, precision: str, start: int, count: int,
+                memory_utilization: float = 0.45, batch_size: int = 8) -> dict:
     name = f"{root.name[:4]}-{benchmark}-{precision}-{start:04d}"
     return {
         "experiment_name": name,
@@ -22,7 +23,7 @@ def make_config(root: Path, benchmark: str, precision: str, start: int, count: i
                       "max_examples": count, "start_index": start},
         "staged_execution": True,
         "staged_unload_between_waves": False,
-        "staged_batch_size": 8,
+        "staged_batch_size": batch_size,
         "pipeline_max_total_tokens": 32768,
         "actors": [{
             "actor_id": precision,
@@ -31,8 +32,8 @@ def make_config(root: Path, benchmark: str, precision: str, start: int, count: i
             "quantization_config": {"bits": 2} if precision == "w2" else {},
             # Respect Slurm's CUDA_VISIBLE_DEVICES; never overwrite physical GPU IDs.
             "backend_kwargs": {
-                "tensor_parallel_size": 1, "gpu_memory_utilization": 0.45,
-                "max_model_len": 36864, "max_num_seqs": 8,
+                "tensor_parallel_size": 1, "gpu_memory_utilization": memory_utilization,
+                "max_model_len": 36864, "max_num_seqs": batch_size,
                 "enable_prefix_caching": True, "enforce_eager": True,
             },
             "generation_params": {
@@ -63,6 +64,8 @@ def main() -> None:
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--root", type=Path, required=True)
+    parser.add_argument("--memory-utilization", type=float, default=0.45)
+    parser.add_argument("--batch-size", type=int, default=8)
     args = parser.parse_args()
     root = args.root.resolve()
     root.mkdir(parents=True, exist_ok=True)
@@ -73,7 +76,8 @@ def main() -> None:
                               ("gsm8k", range(0, 1300, 100))):
         for start in starts:
             for precision in ("fp16", "w2"):
-                cfg = make_config(root, benchmark, precision, start, 100)
+                cfg = make_config(root, benchmark, precision, start, 100,
+                                  args.memory_utilization, args.batch_size)
                 validated = ExperimentConfig.model_validate(cfg)
                 assert validated.pipeline_max_total_tokens == 32768
                 exp = root / cfg["experiment_name"]

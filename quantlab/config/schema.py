@@ -77,6 +77,8 @@ class BenchmarkConfig(BaseModel):
     subset: Optional[str] = None
     max_examples: Optional[int] = None
     seed: int = 42
+    # Slice the same seeded benchmark order into disjoint, resumable run shards.
+    start_index: int = Field(default=0, ge=0)
 
 
 # ── metrics config ────────────────────────────────────────────────────────────

@@ -38,6 +38,17 @@ from quantlab.wandb_logger import WandbRunLogger
 _STDOUT_PROGRESS_INTERVAL_SEC = 300.0
 
 
+def _load_benchmark_examples(adapter, config):
+    """Apply an optional offset after the adapter's deterministic shuffle."""
+    count = config.max_examples
+    load_count = count + config.start_index if count is not None else None
+    examples = adapter.load(
+        split=config.split, subset=config.subset,
+        max_examples=load_count, seed=config.seed,
+    )
+    return examples[config.start_index:]
+
+
 def _stdout_log(message: str) -> None:
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     print(f"[{timestamp}] {message}", flush=True)
@@ -407,12 +418,7 @@ def run_experiment(
 
     # Load benchmark
     adapter = BenchmarkRegistry.build(config.benchmark.name)
-    examples = adapter.load(
-        split=config.benchmark.split,
-        subset=config.benchmark.subset,
-        max_examples=config.benchmark.max_examples,
-        seed=config.benchmark.seed,
-    )
+    examples = _load_benchmark_examples(adapter, config.benchmark)
 
     _stdout_log(f"[runner] loaded {len(examples)} examples from {config.benchmark.name}")
     heartbeat = _ProgressHeartbeat(total_examples=len(examples))

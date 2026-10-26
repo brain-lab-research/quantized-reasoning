@@ -45,4 +45,4 @@ for precision in fp16 w2; do
     printf 'SMOKE_OK %s\n' "$precision"
     sync_once
 done
-"$ql_python" "$repo/h200/collect.py" --root "$root" --hours 7.5
+"$ql_python" "$repo/h200/collect.py" --root "$root" --hours 0

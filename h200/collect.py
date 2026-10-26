@@ -17,7 +17,7 @@ def main() -> None:
     parser.add_argument("--hours", type=float, default=7.6)
     args = parser.parse_args()
     root = args.root.resolve()
-    deadline = time.monotonic() + args.hours * 3600
+    deadline = time.monotonic() + args.hours * 3600 if args.hours > 0 else float("inf")
     repo = Path(__file__).resolve().parents[1]
     tasks = json.loads((root / "tasks.json").read_text())
     for cfg_path in map(Path, tasks):

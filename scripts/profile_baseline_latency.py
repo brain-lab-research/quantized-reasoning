@@ -14,6 +14,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 
 def main():
+    p = argparse.ArgumentParser()
+    p.add_argument("--config", type=Path, required=True)
+    p.add_argument("--output", type=Path, required=True)
+    p.add_argument("--examples", type=int, default=20)
+    p.add_argument("--deadline", type=float, default=float("inf"), help="UTC Unix timestamp")
+    args = p.parse_args()
     import yaml
     import torch
     import vllm
@@ -24,12 +30,6 @@ def main():
     from quantlab.core.types import PrecisionMode, QuantizationMethod
     from quantlab.runner import _load_benchmark_examples
 
-    p = argparse.ArgumentParser()
-    p.add_argument("--config", type=Path, required=True)
-    p.add_argument("--output", type=Path, required=True)
-    p.add_argument("--examples", type=int, default=20)
-    p.add_argument("--deadline", type=float, default=float("inf"), help="UTC Unix timestamp")
-    args = p.parse_args()
     raw = yaml.safe_load(args.config.read_text())
     raw["benchmark"]["max_examples"] = args.examples
     actor = raw["actors"][0]

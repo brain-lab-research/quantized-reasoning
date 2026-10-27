@@ -102,6 +102,7 @@ def main():
     p.add_argument("--root", type=Path, required=True)
     p.add_argument("--prepare-only", action="store_true")
     p.add_argument("--full-benchmarks", action="store_true", help="All tasks in all nine benchmark splits, including 8B AIME")
+    p.add_argument("--benchmarks", nargs="+", choices=BENCHMARKS, default=BENCHMARKS)
     p.add_argument("--reuse-root", type=Path, action="append", default=[])
     p.add_argument("--data-smoke", action="store_true")
     p.add_argument("--sizes", type=int, nargs="+", default=[8, 32])
@@ -116,6 +117,7 @@ def main():
     args = p.parse_args()
     tasks = prepare(args.root, full_benchmarks=args.full_benchmarks)
     tasks = [t for t in tasks if t["size"] in args.sizes and t["precision"] in args.precisions]
+    tasks = [t for t in tasks if t["benchmark"] in args.benchmarks]
     tasks = [t for t in tasks if f"{t['size']}:{t['precision']}" not in args.exclude]
     if args.full_first:
         tasks.sort(key=lambda t: (0 if t["benchmark"] == "math500" and t["count"] == 500 else

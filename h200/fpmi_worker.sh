@@ -3,6 +3,7 @@ set -euo pipefail
 repo=$1
 root=$2
 mode=$3
+shift 3
 base="/home/data/$USER/projects/low-bit-reasoning/runtime"
 ql_python="/home/data/$USER/envs/low-bit-vllm/bin/python"
 export PYTHONPATH="$repo" PATH="$(dirname "$ql_python"):$PATH"
@@ -32,7 +33,7 @@ finish() {
         for file in job-id.txt resume-job.txt; do
             [[ -f "$root/$file" ]] && scancel "$(cat "$root/$file")" || true
         done
-    elif [[ "$mode" == full && -f "$root/resume-job.txt" ]]; then
+    elif [[ ( "$mode" == full || "$mode" == all ) && -f "$root/resume-job.txt" ]]; then
         next=$(cat "$root/resume-job.txt")
         if [[ "$next" != "$SLURM_JOB_ID" ]] && { [[ "$rc" == 0 ]] || (( SECONDS-started < 2400 )); }; then
             scancel "$next" || true
@@ -44,6 +45,8 @@ trap finish EXIT
 trap 'exit 143' TERM INT
 if [[ "$mode" == smoke ]]; then
     "$ql_python" "$repo/h200/smoke.py" --precision w2 --output "$root/smoke-w2.json" --memory-utilization 0.75 --batch-size 16 --kv-cache-gib 80
+elif [[ "$mode" == all ]]; then
+    "$ql_python" "$repo/h200/paper_matrix.py" --root "$root" --sizes 8 --precisions w2 --full-benchmarks --seqs-8 32 --kv-cache-gib 100 --memory-utilization 0.9 "$@"
 else
     "$ql_python" "$repo/h200/paper_matrix.py" --root "$root" --sizes 8 --precisions w2 --full-first --kv-cache-gib 80 --memory-utilization 0.75
 fi

@@ -31,6 +31,8 @@ def prepare(root):
                 cfg["experiment_name"] = name
                 cfg["benchmark"].update(name=ADAPTERS.get(benchmark, benchmark), max_examples=count,
                                          start_index=0, seed=42)
+                if benchmark != "winogrande":
+                    cfg["benchmark"].pop("subset", None)
                 actor = cfg["actors"][0]
                 actor["model_id"] = (f"Qwen/Qwen3-{size}B" if precision == "fp16" else
                                      f"kaitchup/Qwen3-{size}B-autoround-2bit-gptq")
@@ -46,7 +48,9 @@ def prepare(root):
                 path = root / name / "cfg.yaml"
                 path.parent.mkdir(parents=True, exist_ok=True)
                 if path.exists() and yaml.safe_load(path.read_text()) != cfg:
-                    raise ValueError(f"Config changed: {path}")
+                    if list((path.parent / "artifacts").glob("*/config.json")):
+                        raise ValueError(f"Config changed for an existing run: {path}")
+                    path.with_suffix(".previous.yaml").write_text(path.read_text())
                 path.write_text(yaml.safe_dump(cfg, sort_keys=False))
                 tasks.append({"config": str(path), "count": count,
                               "size": size, "benchmark": benchmark, "precision": precision})
@@ -64,7 +68,9 @@ def prepare(root):
         path = root / name / "cfg.yaml"
         path.parent.mkdir(parents=True, exist_ok=True)
         if path.exists() and yaml.safe_load(path.read_text()) != cfg:
-            raise ValueError(f"Config changed: {path}")
+            if list((path.parent / "artifacts").glob("*/config.json")):
+                raise ValueError(f"Config changed for an existing run: {path}")
+            path.with_suffix(".previous.yaml").write_text(path.read_text())
         path.write_text(yaml.safe_dump(cfg, sort_keys=False))
         tasks.append({**task, "config": str(path), "count": count})
     (root / "paper-matrix.json").write_text(json.dumps(tasks, indent=2))

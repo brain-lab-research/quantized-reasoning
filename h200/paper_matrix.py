@@ -29,6 +29,7 @@ def prepare(root):
                 cfg = yaml.safe_load((REPO / "configs" / benchmark / group / filename).read_text())
                 name = f"1027-paper-qwen{size}b-{benchmark}-{precision}"
                 cfg["experiment_name"] = name
+                cfg["description"] = f"Paper baseline: Qwen3-{size}B {precision}, {benchmark}, seed 42, full 32768-token budget."
                 cfg["benchmark"].update(name=ADAPTERS.get(benchmark, benchmark), max_examples=count,
                                          start_index=0, seed=42)
                 if benchmark != "winogrande":
@@ -36,6 +37,8 @@ def prepare(root):
                 cfg["benchmark"]["split"] = ("validation" if benchmark in ("piqa", "winogrande")
                                               else "train" if benchmark == "aime2026" else "test")
                 actor = cfg["actors"][0]
+                actor["actor_id"] = f"qwen3_{size}b_{precision}"
+                cfg["pipeline"][0]["actor_id"] = actor["actor_id"]
                 actor["model_id"] = (f"Qwen/Qwen3-{size}B" if precision == "fp16" else
                                      f"kaitchup/Qwen3-{size}B-autoround-2bit-gptq")
                 actor["generation_params"].update(max_new_tokens=32768, temperature=0.6,

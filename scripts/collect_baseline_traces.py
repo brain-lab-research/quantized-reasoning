@@ -25,6 +25,21 @@ def completed_outputs(engine):
                 yield output
 
 
+def format_chat_prompts(examples, tokenizer, benchmark):
+    """Use the evaluated model's own special tokens for cross-family baselines."""
+    instruction = ("Solve step by step. End with the numeric answer after '#### '."
+                   if benchmark == "gsm8k" else
+                   "Solve step by step. Put your final answer inside \\boxed{}.")
+    for example in examples:
+        problem = example.raw.get("problem", example.raw.get("question"))
+        if problem is None:
+            raise ValueError("Chat prompt recipe requires a raw problem or question")
+        example.prompt = tokenizer.apply_chat_template(
+            [{"role": "user", "content": problem + "\n\n" + instruction}],
+            tokenize=False, add_generation_prompt=True,
+        )
+
+
 def reuse_judgements(root, config, examples):
     from quantlab.artifacts.store import ArtifactStore
     expected = {e.example_id: e.prompt for e in examples}
@@ -71,6 +86,7 @@ def main():
     p.add_argument("--max-tokens", type=int, default=32768)
     p.add_argument("--max-num-seqs", type=int, default=16)
     p.add_argument("--kv-cache-gib", type=float, default=80)
+    p.add_argument("--chat-template", action="store_true")
     args = p.parse_args()
     raw = yaml.safe_load(args.config.read_text())
     if len(raw["actors"]) != 1 or len(raw["pipeline"]) != 1:
@@ -88,9 +104,15 @@ def main():
     raw["output"].update(base_dir=str(args.output), staged_wave_checkpoints=False)
     raw["staged_execution"] = False
     raw["wandb"] = {"enabled": False}
+    if args.chat_template:
+        raw["description"] = raw.get("description", "") + " Prompt recipe: tokenizer_chat."
     config = ExperimentConfig.model_validate(raw)
     adapter = BenchmarkRegistry.build(config.benchmark.name)
     examples = _load_benchmark_examples(adapter, config.benchmark)
+    if args.chat_template:
+        from transformers import AutoTokenizer
+        tokenizer = AutoTokenizer.from_pretrained(config.actors[0].model_id)
+        format_chat_prompts(examples, tokenizer, config.benchmark.name)
     reused = reuse_judgements(args.reuse_root, config, examples) if args.reuse_root else {}
     store = ArtifactStore(str(args.output))
     args.output.mkdir(parents=True, exist_ok=True)

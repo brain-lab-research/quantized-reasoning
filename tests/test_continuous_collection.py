@@ -3,11 +3,16 @@ from pathlib import Path
 from types import SimpleNamespace
 
 
-def test_continuous_loop_saves_out_of_order_without_waiting_for_slowest():
+def load_collector():
     path = Path(__file__).parents[1] / "scripts/collect_baseline_traces.py"
     spec = importlib.util.spec_from_file_location("continuous_collector", path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
+    return module
+
+
+def test_continuous_loop_saves_out_of_order_without_waiting_for_slowest():
+    module = load_collector()
 
     class Engine:
         def __init__(self):
@@ -28,3 +33,18 @@ def test_continuous_loop_saves_out_of_order_without_waiting_for_slowest():
     assert engine.calls == 1
     assert next(results).request_id == "slow"
     assert list(results) == []
+
+
+def test_chat_recipe_uses_model_template_instead_of_qwen_markers():
+    module = load_collector()
+    examples = [SimpleNamespace(prompt="old-qwen-prompt", raw={"problem": "2+3"})]
+
+    class Tokenizer:
+        def apply_chat_template(self, messages, **kwargs):
+            assert kwargs == {"tokenize": False, "add_generation_prompt": True}
+            assert messages[0]["role"] == "user"
+            return "MODEL_TEMPLATE " + messages[0]["content"]
+
+    module.format_chat_prompts(examples, Tokenizer(), "math500")
+    assert examples[0].prompt.startswith("MODEL_TEMPLATE 2+3")
+    assert "\\boxed{}" in examples[0].prompt

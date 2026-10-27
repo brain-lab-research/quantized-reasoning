@@ -22,6 +22,7 @@ def main():
     p.add_argument("--model", required=True)
     p.add_argument("--kv-cache-gib", type=float, default=20)
     p.add_argument("--max-num-seqs", type=int, default=16)
+    p.add_argument("--disable-async-scheduling", action="store_true")
     args = p.parse_args()
     source = [json.loads(l) for l in args.input.read_text().splitlines() if l.strip()]
     args.output.mkdir(parents=True, exist_ok=True)
@@ -43,10 +44,11 @@ def main():
         "temperature": 0.6, "top_p": 0.95, "top_k": 20, "max_context": 36864,
         "timings": "paired arms on same backend; not comparable to NVIDIA latency"}
     (args.output / "config.json").write_text(json.dumps(config, indent=2))
+    backend_options = {"async_scheduling": False} if args.disable_async_scheduling else {}
     model = LLM(model=args.model, dtype="float16", tensor_parallel_size=1,
         enforce_eager=True, max_model_len=36864, gpu_memory_utilization=0.9,
         kv_cache_memory_bytes=int(args.kv_cache_gib * 1024**3),
-        max_num_seqs=args.max_num_seqs, max_num_batched_tokens=4096)
+        max_num_seqs=args.max_num_seqs, max_num_batched_tokens=4096, **backend_options)
     engine = model.llm_engine
     for rid, row in pending.items():
         engine.add_request(rid, row["prompt"], SamplingParams(

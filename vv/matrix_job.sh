@@ -5,6 +5,7 @@ active=$1
 legacy_parent=$2
 repo=$3
 root=$4
+shift 4
 . "$HOME/miniconda3/etc/profile.d/conda.sh"
 conda activate base
 export CUDA_MPS_PIPE_DIRECTORY="$root/direct-cuda"
@@ -31,4 +32,4 @@ finish() { rc=$?; trap - EXIT; kill "$sync_pid" 2>/dev/null || true; sync_once |
 trap finish EXIT
 trap 'exit 143' TERM INT
 cd "$repo"
-python "$repo/h200/paper_matrix.py" --root "$root"
+python "$repo/h200/paper_matrix.py" --root "$root" "$@"

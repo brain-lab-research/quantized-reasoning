@@ -86,6 +86,7 @@ def main():
     p.add_argument("--max-tokens", type=int, default=32768)
     p.add_argument("--max-num-seqs", type=int, default=16)
     p.add_argument("--kv-cache-gib", type=float, default=80)
+    p.add_argument("--memory-utilization", type=float, default=0.8)
     p.add_argument("--chat-template", action="store_true")
     p.add_argument("--open-thinking", action="store_true")
     args = p.parse_args()
@@ -99,10 +100,13 @@ def main():
     raw["pipeline"][0]["max_new_tokens"] = args.max_tokens
     kwargs = raw["actors"][0]["backend_kwargs"]
     kwargs.pop("cuda_visible_devices", None)
-    kwargs.update(max_num_seqs=args.max_num_seqs, gpu_memory_utilization=0.8,
-                  kv_cache_memory_bytes=int(args.kv_cache_gib * 1024**3),
+    kwargs.update(max_num_seqs=args.max_num_seqs, gpu_memory_utilization=args.memory_utilization,
                   max_num_batched_tokens=8192,
                   max_model_len=max(kwargs.get("max_model_len", 0), args.max_tokens + 4096))
+    if args.kv_cache_gib > 0:
+        kwargs["kv_cache_memory_bytes"] = int(args.kv_cache_gib * 1024**3)
+    else:
+        kwargs.pop("kv_cache_memory_bytes", None)
     raw["output"].update(base_dir=str(args.output), staged_wave_checkpoints=False)
     raw["staged_execution"] = False
     raw["wandb"] = {"enabled": False}

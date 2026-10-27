@@ -87,8 +87,19 @@ def main():
     p.add_argument("--root", type=Path, required=True)
     p.add_argument("--prepare-only", action="store_true")
     p.add_argument("--data-smoke", action="store_true")
+    p.add_argument("--sizes", type=int, nargs="+", default=[8, 32])
+    p.add_argument("--precisions", nargs="+", choices=["fp16", "w2"], default=["fp16", "w2"])
+    p.add_argument("--full-first", action="store_true")
+    p.add_argument("--kv-cache-gib", type=float, default=None)
+    p.add_argument("--memory-utilization", type=float, default=0.8)
+    p.add_argument("--exclude", action="append", default=[], help="Exclude worker pair, e.g. 8:w2")
     args = p.parse_args()
     tasks = prepare(args.root)
+    tasks = [t for t in tasks if t["size"] in args.sizes and t["precision"] in args.precisions]
+    tasks = [t for t in tasks if f"{t['size']}:{t['precision']}" not in args.exclude]
+    if args.full_first:
+        tasks.sort(key=lambda t: (0 if t["benchmark"] == "math500" and t["count"] == 500 else
+                                 1 if t["benchmark"] == "gpqa_diamond" and t["count"] == 198 else 2))
     if args.data_smoke:
         from quantlab.benchmarks.registry import BenchmarkRegistry
         checked = set()
@@ -112,6 +123,9 @@ def main():
                "--output", str(cfg.parent / "artifacts"), "--reuse-root", str(args.root),
                "--max-examples", str(task["count"]), "--max-num-seqs", "16" if task["size"] == 8 else "8",
                "--kv-cache-gib", "80" if task["size"] == 8 else "48", "--open-thinking"]
+        if args.kv_cache_gib is not None:
+            cmd[cmd.index("--kv-cache-gib") + 1] = str(args.kv_cache_gib)
+        cmd += ["--memory-utilization", str(args.memory_utilization)]
         (cfg.parent / "cmd.txt").write_text(subprocess.list2cmdline(cmd) + "\n")
         for attempt in range(3):
             print("MATRIX_START", cfg.parent.name, "attempt", attempt + 1, flush=True)

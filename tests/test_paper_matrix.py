@@ -21,3 +21,11 @@ def test_restored_paper_adapters_and_boxed_gsm_answer():
     assert adapter.extract_answer(r"Result: \boxed{42}") == "42"
     assert adapter.is_correct("42", "42")
     assert adapter.build_prompt({"question": "2+3?"}).endswith("<|im_start|>assistant\n")
+
+
+def test_fpmi_worker_filter_selects_only_eight_b_w2(tmp_path, monkeypatch, capsys):
+    from h200 import paper_matrix
+    monkeypatch.setattr("sys.argv", ["paper_matrix", "--root", str(tmp_path),
+        "--prepare-only", "--sizes", "8", "--precisions", "w2", "--full-first"])
+    paper_matrix.main()
+    assert "PAPER_MATRIX 10 tasks" in capsys.readouterr().out

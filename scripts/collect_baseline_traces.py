@@ -81,7 +81,7 @@ def main():
     p = argparse.ArgumentParser()
     p.add_argument("config", type=Path)
     p.add_argument("--output", type=Path, required=True)
-    p.add_argument("--reuse-root", type=Path)
+    p.add_argument("--reuse-root", type=Path, action="append", default=[])
     p.add_argument("--max-examples", type=int, default=500)
     p.add_argument("--max-tokens", type=int, default=32768)
     p.add_argument("--max-num-seqs", type=int, default=16)
@@ -127,7 +127,9 @@ def main():
         from transformers import AutoTokenizer
         tokenizer = AutoTokenizer.from_pretrained(config.actors[0].model_id)
         format_chat_prompts(examples, tokenizer, config.benchmark.name)
-    reused = reuse_judgements(args.reuse_root, config, examples) if args.reuse_root else {}
+    reused = {}
+    for reuse_root in args.reuse_root:
+        reused.update(reuse_judgements(reuse_root, config, examples))
     store = ArtifactStore(str(args.output))
     args.output.mkdir(parents=True, exist_ok=True)
     pointer = args.output / "run-id.txt"

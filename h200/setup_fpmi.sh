@@ -27,6 +27,7 @@ used=$(du -sk "/home/data/$USER" | cut -f1)
 "$ql_python" "$repo/h200/paper_matrix.py" --root "$root" --prepare-only --data-smoke --sizes 8 --precisions w2
 smoke=$(sbatch --parsable -A fpmi-p10 -p gpu --gres=gpu:1 --cpus-per-task=8 --mem=64G --time=00:10:00 --job-name=lowbit-smoke --output="$root/smoke.log" "$repo/h200/fpmi_worker.sh" "$repo" "$root" smoke)
 job=$(sbatch --parsable -A fpmi-p10 -p gpu --gres=gpu:1 --cpus-per-task=8 --mem=64G --time=08:00:00 --dependency="afterok:$smoke" --job-name=lowbit-w2 --output="$root/run.log" "$repo/h200/fpmi_worker.sh" "$repo" "$root" full)
+printf 'sbatch -A fpmi-p10 -p gpu --gres=gpu:1 --cpus-per-task=8 --mem=64G --time=08:00:00 --dependency=afterok:%s --output=%q %q %q %q full\n' "$smoke" "$root/run.log" "$repo/h200/fpmi_worker.sh" "$repo" "$root" > "$root/cmd.txt"
 printf '%s\n' "$smoke" > "$root/smoke-job.txt"
 printf '%s\n' "$job" > "$root/job-id.txt"
 next=$(sbatch --parsable -A fpmi-p10 -p gpu --gres=gpu:1 --cpus-per-task=8 --mem=64G --time=08:00:00 --dependency="afterany:$job" --job-name=lowbit-w2-resume --output="$root/resume.log" "$repo/h200/fpmi_worker.sh" "$repo" "$root" full)

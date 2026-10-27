@@ -47,6 +47,8 @@ if [[ "$mode" == smoke ]]; then
     "$ql_python" "$repo/h200/smoke.py" --precision w2 --output "$root/smoke-w2.json" --memory-utilization 0.75 --batch-size 16 --kv-cache-gib 80
 elif [[ "$mode" == all ]]; then
     "$ql_python" "$repo/h200/paper_matrix.py" --root "$root" --sizes 8 --precisions w2 --full-benchmarks --seqs-8 32 --kv-cache-gib 100 --memory-utilization 0.9 "$@"
+elif [[ "$mode" == profile ]]; then
+    "$ql_python" "$repo/scripts/profile_baseline_latency.py" --config "$root/cfg.yaml" --output "$root/artifacts" --examples 20
 else
     "$ql_python" "$repo/h200/paper_matrix.py" --root "$root" --sizes 8 --precisions w2 --full-first --kv-cache-gib 80 --memory-utilization 0.75
 fi

@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """Paired FP16 recovery on a single model/backend, with immediate output saves."""
 import argparse
+import atexit
 import hashlib
 import json
 from pathlib import Path
 import sys
+import signal
 import time
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -23,7 +25,12 @@ def main():
     p.add_argument("--kv-cache-gib", type=float, default=20)
     p.add_argument("--max-num-seqs", type=int, default=16)
     p.add_argument("--disable-async-scheduling", action="store_true")
+    p.add_argument("--compiled", action="store_true", help="Enable CUDA graphs and compilation on NVIDIA")
     args = p.parse_args()
+    if args.compiled:
+        from quantlab.actors.backends.vllm_backend import _reap_vllm_subprocesses
+        atexit.register(_reap_vllm_subprocesses)
+        signal.signal(signal.SIGTERM, lambda *_: sys.exit(143))
     source = [json.loads(l) for l in args.input.read_text().splitlines() if l.strip()]
     args.output.mkdir(parents=True, exist_ok=True)
     path = args.output / "results.jsonl"
@@ -41,12 +48,21 @@ def main():
     config = {"model": args.model, "vllm": vllm.__version__, "torch": torch.__version__,
         "input_sha256": hashlib.sha256(args.input.read_bytes()).hexdigest(),
         "max_num_seqs": args.max_num_seqs, "kv_cache_gib": args.kv_cache_gib,
+        "compiled": args.compiled, "disable_async_scheduling": args.disable_async_scheduling,
         "temperature": 0.6, "top_p": 0.95, "top_k": 20, "max_context": 36864,
-        "timings": "paired arms on same backend; not comparable to NVIDIA latency"}
+        "timings": "Shared batch completion timestamps are not per-request latency."}
+    previous_path = args.output / "config.json"
+    if previous_path.exists():
+        previous = json.loads(previous_path.read_text())
+        for key in ("model", "input_sha256", "vllm", "torch"):
+            if previous.get(key) != config[key]:
+                raise ValueError("Recovery resume config mismatch: " + key)
+        if previous.get("compiled", False) != args.compiled:
+            raise ValueError("Recovery resume changed execution mode")
     (args.output / "config.json").write_text(json.dumps(config, indent=2))
     backend_options = {"async_scheduling": False} if args.disable_async_scheduling else {}
     model = LLM(model=args.model, dtype="float16", tensor_parallel_size=1,
-        enforce_eager=True, max_model_len=36864, gpu_memory_utilization=0.9,
+        enforce_eager=not args.compiled, max_model_len=36864, gpu_memory_utilization=0.9,
         kv_cache_memory_bytes=int(args.kv_cache_gib * 1024**3),
         max_num_seqs=args.max_num_seqs, max_num_batched_tokens=4096, **backend_options)
     engine = model.llm_engine

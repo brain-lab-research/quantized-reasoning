@@ -10,7 +10,11 @@ conda activate base
 export CUDA_MPS_PIPE_DIRECTORY="$root/direct-cuda"
 export WANDB_MODE=offline PYTHONUNBUFFERED=1 TOKENIZERS_PARALLELISM=false
 export OMP_NUM_THREADS=4 OPENBLAS_NUM_THREADS=4
-while kill -0 "$active" 2>/dev/null; do sleep 10; done
+while kill -0 "$active" 2>/dev/null; do
+    # A stopped parent cannot reap its finished GPU child until resumed.
+    [[ $(ps -p "$active" -o stat=) == Z* ]] && break
+    sleep 10
+done
 # The old parent is stopped and its GPU child has now finished. Terminate only
 # that idle scheduler so its obsolete full-GSM8K backlog cannot start.
 kill -TERM "$legacy_parent" 2>/dev/null || true

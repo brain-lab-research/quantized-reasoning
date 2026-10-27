@@ -33,6 +33,8 @@ def prepare(root):
                                          start_index=0, seed=42)
                 if benchmark != "winogrande":
                     cfg["benchmark"].pop("subset", None)
+                cfg["benchmark"]["split"] = ("validation" if benchmark in ("piqa", "winogrande")
+                                              else "train" if benchmark == "aime2026" else "test")
                 actor = cfg["actors"][0]
                 actor["model_id"] = (f"Qwen/Qwen3-{size}B" if precision == "fp16" else
                                      f"kaitchup/Qwen3-{size}B-autoround-2bit-gptq")

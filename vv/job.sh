@@ -55,16 +55,6 @@ if [[ "$mode" == continuous ]]; then
     done
     exit 0
 fi
-if [[ "$mode" == family ]]; then
-    "$ql_python" "$repo/h200/prepare_cross_family.py" --root "$root"
-    for precision in fp16 w2; do
-        cfg="$root/1027-llama8b-$precision/cfg.yaml"
-        "$ql_python" "$repo/scripts/collect_baseline_traces.py" "$cfg" --output "$root/1027-llama8b-smoke-$precision/artifacts" --max-examples 4 --max-tokens 1024 --chat-template
-        "$ql_python" "$repo/scripts/collect_baseline_traces.py" "$cfg" --output "$root/1027-llama8b-$precision/artifacts" --reuse-root "$root" --max-examples 500 --chat-template
-        sync_once
-    done
-    exit 0
-fi
 "$ql_python" "$repo/h200/prepare.py" --root "$root" --memory-utilization 0.25 --batch-size 4 --kv-cache-gib 12
 for precision in fp16 w2; do
     "$ql_python" "$repo/h200/smoke.py" --precision "$precision" --output "$root/smoke-$precision.json" --memory-utilization 0.25 --batch-size 4 --kv-cache-gib 12 > "$root/smoke-$precision.log" 2>&1

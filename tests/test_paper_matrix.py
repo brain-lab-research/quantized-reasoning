@@ -29,3 +29,18 @@ def test_fpmi_worker_filter_selects_only_eight_b_w2(tmp_path, monkeypatch, capsy
         "--prepare-only", "--sizes", "8", "--precisions", "w2", "--full-first"])
     paper_matrix.main()
     assert "PAPER_MATRIX 10 tasks" in capsys.readouterr().out
+
+
+def test_completed_tasks_can_be_skipped_before_applying_new_resource_limits(tmp_path):
+    import json
+    from h200.paper_matrix import task_complete
+    task = {"config": str(tmp_path / "cfg.yaml"), "count": 100}
+    run = tmp_path / "artifacts" / "run"
+    run.mkdir(parents=True)
+    summary = run / "summary.json"
+    summary.write_text(json.dumps({"n_judged": 99, "n_errors": 0}))
+    assert not task_complete(task)
+    summary.write_text(json.dumps({"n_judged": 100, "n_errors": 0}))
+    assert task_complete(task)
+    summary.write_text(json.dumps({"n_judged": 100, "n_errors": 1}))
+    assert not task_complete(task)

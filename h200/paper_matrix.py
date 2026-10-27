@@ -15,6 +15,17 @@ BENCHMARKS = ("math500", "gpqa_diamond", "gsm8k", "arc_easy", "arc_challenge",
 ADAPTERS = {"aime2026": "aime26", "gsm8k": "gsm8k_paper", "winogrande": "winogrande_paper"}
 
 
+def task_complete(task):
+    summaries = list((Path(task["config"]).parent / "artifacts").glob("*/summary.json"))
+    if len(summaries) != 1:
+        return False
+    try:
+        saved = json.loads(summaries[0].read_text())
+    except (OSError, json.JSONDecodeError):
+        return False
+    return saved.get("n_judged") == task["count"] and saved.get("n_errors") == 0
+
+
 def prepare(root):
     from quantlab.config.schema import ExperimentConfig
     tasks = []
@@ -120,6 +131,9 @@ def main():
     failed = []
     for task in tasks:
         cfg = Path(task["config"])
+        if task_complete(task):
+            print("MATRIX_SKIP_COMPLETE", cfg.parent.name, flush=True)
+            continue
         cmd = [sys.executable, str(REPO / "scripts/collect_baseline_traces.py"), str(cfg),
                "--output", str(cfg.parent / "artifacts"), "--reuse-root", str(args.root),
                "--max-examples", str(task["count"]), "--max-num-seqs", "16" if task["size"] == 8 else str(args.seqs_32),

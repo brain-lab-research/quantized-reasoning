@@ -105,6 +105,7 @@ def main():
     print(f"PAPER_MATRIX {len(tasks)} tasks", flush=True)
     if args.prepare_only:
         return
+    failed = []
     for task in tasks:
         cfg = Path(task["config"])
         cmd = [sys.executable, str(REPO / "scripts/collect_baseline_traces.py"), str(cfg),
@@ -118,10 +119,17 @@ def main():
                 result = subprocess.run(cmd, cwd=REPO, stdout=log, stderr=subprocess.STDOUT)
             if result.returncode == 0:
                 break
-            if attempt == 2:
-                raise RuntimeError(f"Task failed after 3 attempts: {cfg}")
-            time.sleep(30)
-        print("MATRIX_DONE", cfg.parent.name, flush=True)
+            if attempt < 2:
+                time.sleep(30)
+        if result.returncode:
+            failed.append(task)
+            (args.root / "failed-paper-tasks.json").write_text(json.dumps(failed, indent=2))
+            print("MATRIX_FAILED_CONTINUING", cfg.parent.name, flush=True)
+        else:
+            print("MATRIX_DONE", cfg.parent.name, flush=True)
+    (args.root / "failed-paper-tasks.json").write_text(json.dumps(failed, indent=2))
+    if failed:
+        raise RuntimeError(f"Matrix finished with {len(failed)} failed tasks; see failed-paper-tasks.json")
 
 
 if __name__ == "__main__":

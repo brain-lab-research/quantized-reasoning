@@ -34,6 +34,11 @@ def _register_builtins() -> None:
     from quantlab.benchmarks.gpqa import GPQAAdapter
     from quantlab.benchmarks.gpqa_diamond import GPQADiamondAdapter
     from quantlab.benchmarks.winogrande import WinoGrandeAdapter
+    from quantlab.benchmarks.arc_easy import ARCEasyAdapter
+    from quantlab.benchmarks.piqa import PIQAAdapter
+    from quantlab.benchmarks.paper_adapters import ARCChallengeAdapter, PaperGSM8KAdapter
+    from quantlab.benchmarks.paper_winogrande import WinoGrandeAdapter as PaperWinoGrandeAdapter
+    from quantlab.benchmarks.strategyqa import StrategyQAAdapter
 
     mapping = {
         "math500": MATH500Adapter,
@@ -42,6 +47,12 @@ def _register_builtins() -> None:
         "gpqa": GPQAAdapter,
         "gpqa_diamond": GPQADiamondAdapter,
         "winogrande": WinoGrandeAdapter,
+        "arc_easy": ARCEasyAdapter,
+        "arc_challenge": ARCChallengeAdapter,
+        "piqa": PIQAAdapter,
+        "strategyqa": StrategyQAAdapter,
+        "gsm8k_paper": PaperGSM8KAdapter,
+        "winogrande_paper": PaperWinoGrandeAdapter,
     }
     for name, cls in mapping.items():
         BenchmarkRegistry._registry.setdefault(name, cls)

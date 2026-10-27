@@ -87,6 +87,7 @@ def main():
     p.add_argument("--max-num-seqs", type=int, default=16)
     p.add_argument("--kv-cache-gib", type=float, default=80)
     p.add_argument("--chat-template", action="store_true")
+    p.add_argument("--open-thinking", action="store_true")
     args = p.parse_args()
     raw = yaml.safe_load(args.config.read_text())
     if len(raw["actors"]) != 1 or len(raw["pipeline"]) != 1:
@@ -100,15 +101,24 @@ def main():
     kwargs.pop("cuda_visible_devices", None)
     kwargs.update(max_num_seqs=args.max_num_seqs, gpu_memory_utilization=0.8,
                   kv_cache_memory_bytes=int(args.kv_cache_gib * 1024**3),
-                  max_num_batched_tokens=8192)
+                  max_num_batched_tokens=8192,
+                  max_model_len=max(kwargs.get("max_model_len", 0), args.max_tokens + 4096))
     raw["output"].update(base_dir=str(args.output), staged_wave_checkpoints=False)
     raw["staged_execution"] = False
     raw["wandb"] = {"enabled": False}
     if args.chat_template:
         raw["description"] = raw.get("description", "") + " Prompt recipe: tokenizer_chat."
+    if args.open_thinking:
+        raw["description"] = raw.get("description", "") + " Original-paper open-think scaffold."
     config = ExperimentConfig.model_validate(raw)
     adapter = BenchmarkRegistry.build(config.benchmark.name)
     examples = _load_benchmark_examples(adapter, config.benchmark)
+    if args.open_thinking:
+        for example in examples:
+            if example.prompt.endswith("<|im_start|>assistant\n"):
+                example.prompt += "<think>\n"
+            elif not example.prompt.endswith(("<think>\n", "<think>")):
+                raise ValueError("Paper recipe requires a Qwen chat prompt")
     if args.chat_template:
         from transformers import AutoTokenizer
         tokenizer = AutoTokenizer.from_pretrained(config.actors[0].model_id)
@@ -132,6 +142,9 @@ def main():
     print(f"CONTINUOUS total={len(examples)} saved={len(reused)} pending={len(pending)} "
           f"active_limit={args.max_num_seqs} kv_gib={args.kv_cache_gib}", flush=True)
     if not pending:
+        store.save_summary(run_id, {"n_examples": len(examples), "n_judged": len(reused),
+            "n_new": 0, "n_errors": 0,
+            "accuracy": sum(r["is_correct"] for r in reused.values()) / max(len(reused), 1)})
         print("ALREADY_COMPLETE", flush=True)
         return
     actor = config.actors[0]

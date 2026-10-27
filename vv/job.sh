@@ -4,6 +4,7 @@ set -euo pipefail
 repo=$1
 root=$2
 backup=${3:-local-only}
+mode=${4:-legacy}
 . /data/users/shveikinda/miniconda3/etc/profile.d/conda.sh
 conda activate base
 cd "$repo"
@@ -42,6 +43,18 @@ finish() {
 }
 trap finish EXIT
 trap 'exit 143' TERM INT
+if [[ "$mode" == continuous ]]; then
+    "$ql_python" "$repo/scripts/collect_baseline_traces.py" "$root/1026-math500-w2-0000/cfg.yaml" --output "$root/1027-throughput-w2/artifacts" --max-examples 32 --max-tokens 512 --max-num-seqs 16 --kv-cache-gib 80
+    for precision in fp16 w2; do
+        "$ql_python" "$repo/scripts/collect_baseline_traces.py" "$root/1026-math500-$precision-0000/cfg.yaml" --output "$root/1027-full-math500-$precision/artifacts" --reuse-root "$root" --max-examples 500 --max-num-seqs 16 --kv-cache-gib 80
+        sync_once
+    done
+    for precision in fp16 w2; do
+        "$ql_python" "$repo/scripts/collect_baseline_traces.py" "$root/1026-gsm8k-$precision-0000/cfg.yaml" --output "$root/1027-full-gsm8k-$precision/artifacts" --reuse-root "$root" --max-examples 1319 --max-num-seqs 16 --kv-cache-gib 80
+        sync_once
+    done
+    exit 0
+fi
 "$ql_python" "$repo/h200/prepare.py" --root "$root" --memory-utilization 0.25 --batch-size 4 --kv-cache-gib 12
 for precision in fp16 w2; do
     "$ql_python" "$repo/h200/smoke.py" --precision "$precision" --output "$root/smoke-$precision.json" --memory-utilization 0.25 --batch-size 4 --kv-cache-gib 12 > "$root/smoke-$precision.log" 2>&1

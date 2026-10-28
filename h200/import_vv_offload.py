@@ -66,6 +66,19 @@ def main():
         for bench, examples in expected.items():
             if bench in done:
                 continue
+            if bench == "winogrande":
+                local = args.reuse_root/"1027-paper-qwen8b-winogrande-w2-all"/"artifacts"
+                for summary_path in local.glob("*/summary.json"):
+                    try:
+                        local_summary = json.loads(summary_path.read_text())
+                    except (OSError, ValueError):
+                        continue
+                    if local_summary.get("n_judged") == len(examples) and local_summary.get("n_errors") == 0:
+                        print("LOCAL_FPMI_RESULT_READY", bench, flush=True)
+                        done.add(bench)
+                        break
+                if bench in done:
+                    continue
             cache = args.reuse_root/f"1028-offload-{bench}"/"artifacts"
             if list(cache.glob("*/config.json")):
                 print("ALREADY_IMPORTED", bench, flush=True)

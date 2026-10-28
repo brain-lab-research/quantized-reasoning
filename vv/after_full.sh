@@ -6,7 +6,11 @@ primary=$2
 root=$3
 controller=$4
 deadline=$5
-export CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=GPU-81dfcc32-ea97-c0f1-778e-ff44c4992c1a
+gpu_index=$6
+expected_uuid=$7
+actual_uuid=$(/usr/bin/nvidia-smi -i "$gpu_index" --query-gpu=uuid --format=csv,noheader | tr -d ' \r')
+[[ "$actual_uuid" == "$expected_uuid" ]] || { echo "GPU_UUID_MISMATCH"; exit 1; }
+export CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES="$gpu_index"
 export HF_HOME=/data/hf_cache CUDA_MPS_PIPE_DIRECTORY="$root/direct-cuda"
 export PYTHONUNBUFFERED=1 TOKENIZERS_PARALLELISM=false WANDB_MODE=offline
 export OMP_NUM_THREADS=4 OPENBLAS_NUM_THREADS=4 VLLM_WORKER_MULTIPROC_METHOD=spawn

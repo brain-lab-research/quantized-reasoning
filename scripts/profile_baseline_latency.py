@@ -18,6 +18,8 @@ def main():
     p.add_argument("--config", type=Path, required=True)
     p.add_argument("--output", type=Path, required=True)
     p.add_argument("--examples", type=int, default=20)
+    p.add_argument("--model-path", type=str, default=None,
+                   help="Optional local weights path; retain the canonical model ID in config")
     p.add_argument("--deadline", type=float, default=float("inf"), help="UTC Unix timestamp")
     args = p.parse_args()
     import yaml
@@ -59,7 +61,7 @@ def main():
         print("PROFILE_ALREADY_COMPLETE_OR_DEADLINE", flush=True)
         return
     actor = config.actors[0]
-    backend = VLLMBackend(actor.model_id, precision=PrecisionMode(actor.precision),
+    backend = VLLMBackend(args.model_path or actor.model_id, precision=PrecisionMode(actor.precision),
                          quantization=QuantizationMethod(actor.quantization), **actor.backend_kwargs)
     atexit.register(lambda: backend.unload() if getattr(backend, "_llm", None) is not None else None)
     signal.signal(signal.SIGTERM, lambda *_: sys.exit(143))
@@ -75,6 +77,7 @@ def main():
     (args.output / "runtime.json").write_text(json.dumps(dict(
         vllm=vllm.__version__, torch=torch.__version__, model_load_seconds=load_seconds,
         warmup_seconds=warmup_seconds,
+        model_path=args.model_path,
         cuda_visible_devices=os.environ.get("CUDA_VISIBLE_DEVICES"),
         slurm_job_id=os.environ.get("SLURM_JOB_ID"), mode="sequential batch=1, warm, prefix caching enabled"), indent=2))
     gen = actor.generation_params

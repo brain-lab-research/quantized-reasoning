@@ -43,7 +43,7 @@ trap 'exit 143' TERM INT
 remaining=$(( deadline - $(date +%s) ))
 tail_root="$root/1028-wino-tail"
 if (( remaining > 600 )) && [[ -f "$tail_root/cfg.yaml" ]]; then
-    if /usr/bin/python3 "$repo/scripts/wino_source_complete.py"; then
+    if /usr/bin/python3 "$repo/scripts/wino_source_complete.py" --manifest "$tail_root/source.json"; then
         printf 'WINO_TAIL_SKIP_FULL_FPMI_COMPLETE\n'
     else
         printf 'WINO_TAIL_START\n'

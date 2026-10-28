@@ -40,6 +40,8 @@ def main():
     p.add_argument("--reuse-root", type=Path, required=True)
     p.add_argument("--work-root", type=Path, required=True)
     p.add_argument("--prefix", default="shveikinda/vv/low-bit/1028-fpmi-offload/")
+    p.add_argument("--tail", action="store_true", help="Import only the fixed WinoGrande tail shard")
+    p.add_argument("--fingerprint-prefix", default=None)
     p.add_argument("--poll", type=int, default=90)
     args = p.parse_args()
     args.work_root.mkdir(parents=True, exist_ok=True)
@@ -49,17 +51,21 @@ def main():
     print("LOCAL_MODEL_FINGERPRINT_READY", local_fingerprint["revision"], flush=True)
     expected = {}
     configs = {}
-    for bench in ("strategyqa", "winogrande"):
+    for bench in (("winogrande",) if args.tail else ("strategyqa", "winogrande")):
         folder = args.target_root/f"1027-paper-qwen8b-{bench}-w2-all"
         config = ExperimentConfig.model_validate(yaml.safe_load((folder/"cfg.yaml").read_text()))
         configs[bench] = config
         adapter = BenchmarkRegistry.build(config.benchmark.name)
         examples = _load_benchmark_examples(adapter, config.benchmark)
+        if len(examples) != config.benchmark.max_examples:
+            raise ValueError("Unexpected local dataset size: " + bench)
+        if args.tail:
+            examples = examples[800:1267]
         for e in examples:
             if e.prompt.endswith("<|im_start|>assistant\n"):
                 e.prompt += "<think>\n"
         expected[bench] = {e.example_id:(e.prompt, e.ground_truth) for e in examples}
-        if len(expected[bench]) != config.benchmark.max_examples:
+        if len(expected[bench]) != (467 if args.tail else config.benchmark.max_examples):
             raise ValueError("Unexpected local dataset size: " + bench)
     done = set()
     while len(done) < len(expected):
@@ -73,23 +79,24 @@ def main():
                         local_summary = json.loads(summary_path.read_text())
                     except (OSError, ValueError):
                         continue
-                    if local_summary.get("n_judged") == len(examples) and local_summary.get("n_errors") == 0:
+                    if local_summary.get("n_judged") == configs[bench].benchmark.max_examples and local_summary.get("n_errors") == 0:
                         print("LOCAL_FPMI_RESULT_READY", bench, flush=True)
                         done.add(bench)
                         break
                 if bench in done:
                     continue
-            cache = args.reuse_root/f"1028-offload-{bench}"/"artifacts"
+            cache = args.reuse_root/f"1028-offload-{bench}{'-tail' if args.tail else ''}"/"artifacts"
             if list(cache.glob("*/config.json")):
                 print("ALREADY_IMPORTED", bench, flush=True)
                 done.add(bench)
                 continue
             task = args.target_root/f"1027-paper-qwen8b-{bench}-w2-all"
-            if (task/"cmd.txt").exists():
+            if not args.tail and (task/"cmd.txt").exists():
                 print("TOO_LATE_FPMI_ALREADY_STARTED", bench, flush=True)
                 done.add(bench)
                 continue
-            prefix = args.prefix.rstrip("/")+f"/1027-paper-qwen8b-{bench}-w2-all/artifacts/"
+            folder_name = "1028-wino-tail" if args.tail else f"1027-paper-qwen8b-{bench}-w2-all"
+            prefix = args.prefix.rstrip("/")+f"/{folder_name}/artifacts/"
             objects = []
             for page in client.get_paginator("list_objects_v2").paginate(Bucket=bucket, Prefix=prefix):
                 objects.extend(page.get("Contents", []))
@@ -103,8 +110,9 @@ def main():
                     continue
                 names = ["config.json", "summary.json", "traces.jsonl", "judgements.jsonl", "metrics.jsonl", "timing.jsonl"]
                 try:
+                    fp_prefix = args.fingerprint_prefix or args.prefix
                     remote_fingerprint = json.loads(client.get_object(
-                        Bucket=bucket, Key=args.prefix.rstrip("/")+"/model-fingerprint.json")["Body"].read())
+                        Bucket=bucket, Key=fp_prefix.rstrip("/")+"/model-fingerprint.json")["Body"].read())
                     if remote_fingerprint != local_fingerprint:
                         raise ValueError("VV and FPMI checkpoint/tokenizer fingerprints differ")
                     heads = {name:client.head_object(Bucket=bucket, Key=run_prefix+name) for name in names}
@@ -123,7 +131,13 @@ def main():
                     source = ExperimentConfig.model_validate(json.loads((tmp/"config.json").read_text()))
                     target = configs[bench]
                     a, b = source.actors[0], target.actors[0]
-                    if (source.benchmark.model_dump() != target.benchmark.model_dump()
+                    source_bench, target_bench = source.benchmark.model_dump(), target.benchmark.model_dump()
+                    if args.tail:
+                        if source_bench["start_index"] != 800 or source_bench["max_examples"] != 467:
+                            raise ValueError("Unexpected tail shard bounds")
+                        for key in ("start_index", "max_examples"):
+                            source_bench.pop(key); target_bench.pop(key)
+                    if (source_bench != target_bench
                         or a.model_id != b.model_id or a.precision != b.precision
                         or a.quantization != b.quantization or a.quantization_config != b.quantization_config
                         or a.generation_params.model_dump() != b.generation_params.model_dump()):
@@ -136,13 +150,13 @@ def main():
                         if len(ids) != len(examples) or set(ids) != set(examples):
                             raise ValueError("Incomplete " + filename)
                     manifest = yaml.safe_load(client.get_object(
-                        Bucket=bucket, Key=args.prefix.rstrip("/")+"/cfg.yaml")["Body"].read())
+                        Bucket=bucket, Key=fp_prefix.rstrip("/")+"/cfg.yaml")["Body"].read())
                     (tmp/"offload-provenance.json").write_text(json.dumps({"source": "s3://"+bucket+"/"+run_prefix,
                         "host":"vv", "gpu_uuid":manifest["gpu_uuid"],
                         "per_request_timing":"Not measured by this continuous-batch collector."}, indent=2))
                     cache.mkdir(parents=True, exist_ok=True)
                     destination = cache/run_prefix.rstrip("/").rsplit("/", 1)[-1]
-                    if (task/"cmd.txt").exists():
+                    if not args.tail and (task/"cmd.txt").exists():
                         print("TOO_LATE_FPMI_ALREADY_STARTED", bench, flush=True)
                         done.add(bench)
                         break

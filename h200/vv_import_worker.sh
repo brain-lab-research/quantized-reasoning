@@ -7,6 +7,10 @@ export OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 PYTHONUNBUFFERED=1
 set -a
 . "$HOME/.s3-cod.env"
 set +a
+extra=()
+if [[ "${3:-full}" == tail ]]; then
+    extra=(--tail --prefix shveikinda/vv/low-bit/1028-overnight-followups/ --fingerprint-prefix shveikinda/vv/low-bit/1028-fpmi-offload/)
+fi
 exec "/home/data/$USER/envs/low-bit-vllm/bin/python" "$repo/h200/import_vv_offload.py" \
     --target-root "/home/data/$USER/projects/low-bit-reasoning/exps/1027-fpmi-full-b" \
-    --reuse-root "/home/data/$USER/projects/low-bit-reasoning/exps/1027-fpmi-w2-traces" --work-root "$root"
+    --reuse-root "/home/data/$USER/projects/low-bit-reasoning/exps/1027-fpmi-w2-traces" --work-root "$root" "${extra[@]}"

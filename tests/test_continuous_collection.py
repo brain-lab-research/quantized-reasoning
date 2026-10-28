@@ -48,3 +48,21 @@ def test_chat_recipe_uses_model_template_instead_of_qwen_markers():
     module.format_chat_prompts(examples, Tokenizer(), "math500")
     assert examples[0].prompt.startswith("MODEL_TEMPLATE 2+3")
     assert "\\boxed{}" in examples[0].prompt
+
+
+def test_requested_shards_cover_winogrande_without_overlap():
+    module = load_collector()
+    from quantlab.runner import _load_benchmark_examples
+
+    class Adapter:
+        def load(self, split, subset, max_examples, seed):
+            return list(range(max_examples))
+
+    shards = []
+    for start, count in ((0, 800), (800, 467)):
+        raw = {"benchmark": {}}
+        module.set_requested_range(raw, count, start)
+        cfg = SimpleNamespace(**raw["benchmark"], split="validation", subset=None, seed=42)
+        shards.append(_load_benchmark_examples(Adapter(), cfg))
+    assert shards[0] == list(range(800))
+    assert shards[1] == list(range(800, 1267))

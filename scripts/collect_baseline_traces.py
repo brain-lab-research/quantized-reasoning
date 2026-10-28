@@ -25,6 +25,12 @@ def completed_outputs(engine):
                 yield output
 
 
+def set_requested_range(raw, count, start_index):
+    if count <= 0 or start_index < 0:
+        raise ValueError("count must be positive and start_index non-negative")
+    raw["benchmark"].update(max_examples=count, start_index=start_index)
+
+
 def format_chat_prompts(examples, tokenizer, benchmark):
     """Use the evaluated model's own special tokens for cross-family baselines."""
     instruction = ("Solve step by step. End with the numeric answer after '#### '."
@@ -83,6 +89,7 @@ def main():
     p.add_argument("--output", type=Path, required=True)
     p.add_argument("--reuse-root", type=Path, action="append", default=[])
     p.add_argument("--max-examples", type=int, default=500)
+    p.add_argument("--start-index", type=int, default=0)
     p.add_argument("--max-tokens", type=int, default=32768)
     p.add_argument("--max-num-seqs", type=int, default=16)
     p.add_argument("--kv-cache-gib", type=float, default=80)
@@ -95,7 +102,7 @@ def main():
         raise ValueError("Only single-stage baselines are supported")
     if raw["pipeline"][0].get("exit_conditions"):
         raise ValueError("Baseline collection must not contain early-exit conditions")
-    raw["benchmark"].update(max_examples=args.max_examples, start_index=0)
+    set_requested_range(raw, args.max_examples, args.start_index)
     raw["actors"][0]["generation_params"]["max_new_tokens"] = args.max_tokens
     raw["pipeline"][0]["max_new_tokens"] = args.max_tokens
     kwargs = raw["actors"][0]["backend_kwargs"]

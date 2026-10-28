@@ -135,8 +135,11 @@ def main():
                         ids = [r["example_id"] for r in entries]
                         if len(ids) != len(examples) or set(ids) != set(examples):
                             raise ValueError("Incomplete " + filename)
+                    manifest = yaml.safe_load(client.get_object(
+                        Bucket=bucket, Key=args.prefix.rstrip("/")+"/cfg.yaml")["Body"].read())
                     (tmp/"offload-provenance.json").write_text(json.dumps({"source": "s3://"+bucket+"/"+run_prefix,
-                        "host":"vv", "gpu_uuid":"GPU-81dfcc32-ea97-c0f1-778e-ff44c4992c1a"}, indent=2))
+                        "host":"vv", "gpu_uuid":manifest["gpu_uuid"],
+                        "per_request_timing":"Not measured by this continuous-batch collector."}, indent=2))
                     cache.mkdir(parents=True, exist_ok=True)
                     destination = cache/run_prefix.rstrip("/").rsplit("/", 1)[-1]
                     if (task/"cmd.txt").exists():

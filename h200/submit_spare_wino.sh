@@ -14,5 +14,10 @@ job=$("${command[@]}")
 printf '%s\n' "$job" > "$root/spare-wino-job.txt"
 printf '%q ' "${command[@]}" > "$root/spare-wino-cmd.txt"
 printf '\n' >> "$root/spare-wino-cmd.txt"
-printf 'SPARE_WINO_JOB=%s\n' "$job"
-squeue -j "$job" -o '%.8i %.20j %.9T %.10M %.25R'
+resume=$(sbatch --parsable -A fpmi-p10 -p gpu --gres=gpu:1 --cpus-per-task=8 --mem=64G \
+    --time=08:00:00 --dependency="afterany:$job" --job-name=lowbit-wino-resume \
+    --output="$root/spare-wino-resume.log" "$repo/h200/fpmi_worker.sh" "$repo" "$root" all \
+    --reuse-root "$root" --benchmarks winogrande)
+printf '%s\n' "$resume" > "$root/spare-wino-resume-job.txt"
+printf 'SPARE_WINO_JOB=%s RESUME=%s\n' "$job" "$resume"
+squeue -j "$job,$resume" -o '%.8i %.20j %.9T %.10M %.25R'

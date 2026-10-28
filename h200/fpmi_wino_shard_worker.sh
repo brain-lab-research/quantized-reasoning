@@ -29,5 +29,6 @@ trap 'exit 143' TERM INT
 "$python" scripts/collect_baseline_traces.py "$root/cfg.yaml" --output "$root/artifacts" \
     --max-examples "$count" --start-index "$start" --max-tokens 32768 --max-num-seqs 32 \
     --kv-cache-gib 100 --memory-utilization 0.9 --open-thinking \
+    --reuse-root "/home/data/$USER/projects/low-bit-reasoning/exps" \
     --reuse-root "/home/data/$USER/projects/low-bit-reasoning/exps/1027-fpmi-w2-traces" \
     --reuse-root "/home/data/$USER/projects/low-bit-reasoning/exps/1027-fpmi-full-b"

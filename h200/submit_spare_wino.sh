@@ -7,6 +7,11 @@ if [[ -f "$root/spare-wino-job.txt" ]]; then
     printf 'ALREADY_QUEUED=%s\n' "$(cat "$root/spare-wino-job.txt")"
     exit 0
 fi
+used_kib=$(du -sk "/home/data/$USER" | cut -f1)
+(( used_kib + 1024*1024 < 400*1024*1024 )) || { echo DISK_HEADROOM_FAILED; exit 1; }
+if [[ -f "$root/paper-matrix.json" && ! -f "$root/paper-matrix-before-spare.json" ]]; then
+    cp "$root/paper-matrix.json" "$root/paper-matrix-before-spare.json"
+fi
 command=(sbatch --parsable -A fpmi-p10 -p gpu --gres=gpu:1 --cpus-per-task=8 --mem=64G
     --time=08:00:00 --job-name=lowbit-wino-spare --output="$root/spare-wino.log"
     "$repo/h200/fpmi_worker.sh" "$repo" "$root" all --reuse-root "$root" --benchmarks winogrande)

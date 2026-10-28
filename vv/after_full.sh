@@ -28,7 +28,9 @@ printf 'PRIMARY_EXITED\n'
 remaining=$(( deadline - $(date +%s) ))
 (( remaining > 0 )) || exit 0
 # Retry only incomplete primary tasks before spending GPU time on follow-ups.
-timeout --signal=TERM --kill-after=30s "$remaining" bash "$primary/cmd.txt" > "$root/baseline-check.log" 2>&1
+if ! timeout --signal=TERM --kill-after=30s "$remaining" bash "$primary/cmd.txt" > "$root/baseline-check.log" 2>&1; then
+    printf 'BASELINE_RETRY_FAILED: continuing independent follow-ups\n'
+fi
 set -a
 . "$HOME/.s3-cod.env"
 set +a
@@ -39,14 +41,19 @@ finish() { rc=$?; trap - EXIT; kill "$sync_pid" 2>/dev/null || true; sync_once |
 trap finish EXIT
 trap 'exit 143' TERM INT
 remaining=$(( deadline - $(date +%s) ))
+grade_pid=''
 if (( remaining > 3600 )); then
     printf 'ROUTING_CONTROL_START\n'
-    timeout --signal=TERM --kill-after=30s "$remaining" python "$repo/scripts/run_fp16_recovery.py" \
+    if timeout --signal=TERM --kill-after=30s "$remaining" python "$repo/scripts/run_fp16_recovery.py" \
         --input "$root/1028-routing-control/requests.jsonl" --output "$root/1028-routing-control" \
         --model Qwen/Qwen3-32B --kv-cache-gib 56 --max-num-seqs 64 --compiled \
-        > "$root/1028-routing-control/run.log" 2>&1
-    python "$repo/scripts/grade_routing_control.py" --root "$root/1028-routing-control" \
-        --source "$root/source-w2" > "$root/1028-routing-control/grade.log" 2>&1
+        > "$root/1028-routing-control/run.log" 2>&1; then
+        timeout 3600 python "$repo/scripts/grade_routing_control.py" --root "$root/1028-routing-control" \
+            --source "$root/source-w2" > "$root/1028-routing-control/grade.log" 2>&1 &
+        grade_pid=$!
+    else
+        printf 'ROUTING_CONTROL_FAILED: continuing latency profiles\n'
+    fi
 fi
 for pair in 32:fp16 32:w2 8:fp16 8:w2; do
     remaining=$(( deadline - $(date +%s) ))
@@ -57,7 +64,10 @@ for pair in 32:fp16 32:w2 8:fp16 8:w2; do
     mkdir -p "$out"
     cfg="$primary/1027-paper-qwen${size}b-math500-${precision}-all/cfg.yaml"
     printf 'LATENCY_START %s\n' "$pair"
-    timeout --signal=TERM --kill-after=30s "$remaining" python "$repo/scripts/profile_baseline_latency.py" \
-        --config "$cfg" --output "$out" --examples 20 --deadline "$deadline" > "$out/run.log" 2>&1
+    if ! timeout --signal=TERM --kill-after=30s "$remaining" python "$repo/scripts/profile_baseline_latency.py" \
+        --config "$cfg" --output "$out" --examples 20 --deadline "$deadline" > "$out/run.log" 2>&1; then
+        printf 'LATENCY_FAILED %s\n' "$pair"
+    fi
 done
+if [[ -n "$grade_pid" ]]; then wait "$grade_pid" || printf 'ROUTING_GRADE_FAILED\n'; fi
 printf 'OVERNIGHT_FOLLOWUPS_FINISHED\n'

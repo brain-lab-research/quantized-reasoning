@@ -26,6 +26,17 @@ def read_rows(path):
     return [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
 
 
+def benchmark_matches(source, target, tail):
+    source, target = dict(source), dict(target)
+    if tail:
+        if source.get("start_index") != 800 or source.get("max_examples") != 467:
+            return False
+        for key in ("start_index", "max_examples"):
+            source.pop(key, None)
+            target.pop(key, None)
+    return source == target
+
+
 def main():
     import boto3
     import yaml
@@ -131,13 +142,7 @@ def main():
                     source = ExperimentConfig.model_validate(json.loads((tmp/"config.json").read_text()))
                     target = configs[bench]
                     a, b = source.actors[0], target.actors[0]
-                    source_bench, target_bench = source.benchmark.model_dump(), target.benchmark.model_dump()
-                    if args.tail:
-                        if source_bench["start_index"] != 800 or source_bench["max_examples"] != 467:
-                            raise ValueError("Unexpected tail shard bounds")
-                        for key in ("start_index", "max_examples"):
-                            source_bench.pop(key); target_bench.pop(key)
-                    if (source_bench != target_bench
+                    if (not benchmark_matches(source.benchmark.model_dump(), target.benchmark.model_dump(), args.tail)
                         or a.model_id != b.model_id or a.precision != b.precision
                         or a.quantization != b.quantization or a.quantization_config != b.quantization_config
                         or a.generation_params.model_dump() != b.generation_params.model_dump()):

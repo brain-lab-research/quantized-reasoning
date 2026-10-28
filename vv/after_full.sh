@@ -41,6 +41,21 @@ finish() { rc=$?; trap - EXIT; kill "$sync_pid" 2>/dev/null || true; sync_once |
 trap finish EXIT
 trap 'exit 143' TERM INT
 remaining=$(( deadline - $(date +%s) ))
+tail_root="$root/1028-wino-tail"
+if (( remaining > 600 )) && [[ -f "$tail_root/cfg.yaml" ]]; then
+    if /usr/bin/python3 "$repo/scripts/wino_source_complete.py"; then
+        printf 'WINO_TAIL_SKIP_FULL_FPMI_COMPLETE\n'
+    else
+        printf 'WINO_TAIL_START\n'
+        if ! timeout --signal=TERM --kill-after=30s "$remaining" python "$repo/scripts/collect_baseline_traces.py" \
+            "$tail_root/cfg.yaml" --output "$tail_root/artifacts" --max-examples 467 \
+            --max-num-seqs 32 --kv-cache-gib 100 --memory-utilization 0.9 --open-thinking \
+            --reuse-root "$root" > "$tail_root/run.log" 2>&1; then
+            printf 'WINO_TAIL_FAILED\n'
+        fi
+    fi
+fi
+remaining=$(( deadline - $(date +%s) ))
 grade_pid=''
 if (( remaining > 3600 )); then
     printf 'ROUTING_CONTROL_START\n'

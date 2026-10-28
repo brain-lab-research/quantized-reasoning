@@ -42,6 +42,18 @@ for idx in 1 2; do
     printf '%s\n' "$next" >> "$root/job-ids.txt"
     previous=$next
 done
+w4_root="/home/data/$USER/projects/low-bit-reasoning/exps/1029-gpqa-w4-full"
+if [[ -f "$w4_root/job-ids.txt" ]]; then
+    w4_last=$(tail -n 1 "$w4_root/job-ids.txt")
+    [[ $w4_last =~ ^[0-9]+$ ]] || { echo INVALID_W4_JOB_ID >&2; exit 1; }
+    compare=$(sbatch --parsable -A fpmi-p10 -p cpu --cpus-per-task=2 --mem=8G --time=00:30:00 \
+        --dependency="afterany:$previous:$w4_last" --job-name=gpqa-compare --output="$root/compare.log" \
+        "$repo/h200/fpmi_compare_gpqa.sh" "$repo" "$root" "$w4_root")
+    printf '%s\n' "$compare" > "$root/compare-job.txt"
+    printf 'COMPARE_JOB=%s AFTER=%s,%s\n' "$compare" "$previous" "$w4_last"
+else
+    echo W4_JOB_IDS_MISSING_COMPARISON_NOT_QUEUED >&2
+fi
 printf 'JOBS '; tr '\n' ' ' < "$root/job-ids.txt"; printf '\n'
 git -C "$repo" log -1 --oneline
 squeue -u "$USER" -o '%.8i %.20j %.9T %.10M %.25R'

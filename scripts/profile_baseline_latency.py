@@ -2,6 +2,7 @@
 """Warm single-request wall-clock profiles, separate from model loading and grading."""
 import argparse
 import atexit
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -78,6 +79,7 @@ def main():
         vllm=vllm.__version__, torch=torch.__version__, model_load_seconds=load_seconds,
         warmup_seconds=warmup_seconds,
         model_path=args.model_path,
+        gpu_name=torch.cuda.get_device_name(0),
         cuda_visible_devices=os.environ.get("CUDA_VISIBLE_DEVICES"),
         slurm_job_id=os.environ.get("SLURM_JOB_ID"), mode="sequential batch=1, warm, prefix caching enabled"), indent=2))
     gen = actor.generation_params
@@ -93,6 +95,8 @@ def main():
             answer = result.outputs[0]
             predicted = adapter.extract_answer(answer.text)
             row = dict(example_id=example.example_id, wall_seconds=elapsed,
+                prompt_sha256=hashlib.sha256(example.prompt.encode('utf8')).hexdigest(),
+                ground_truth=example.ground_truth,
                 prompt_tokens=len(result.prompt_token_ids), output_tokens=len(answer.token_ids),
                 token_ids=list(answer.token_ids), text=answer.text, finish_reason=answer.finish_reason,
                 predicted=predicted, is_correct=bool(adapter.is_correct(predicted, example.ground_truth)))

@@ -197,6 +197,7 @@ def main():
     (args.output / "runtime.json").write_text(json.dumps({"w2_load_seconds": w2_load,
         "fp16_load_seconds": fp16_load, "warmup_seconds": warmup_seconds,
         "w2_gpu_memory_utilization": 0.35, "fp16_gpu_memory_utilization": fp16_utilization,
+        "gpu_name": torch.cuda.get_device_name(0),
         "slurm_job_id": __import__("os").environ.get("SLURM_JOB_ID"),
         "gpu_free_total_bytes_after_load": list(torch.cuda.mem_get_info())}, indent=2))
     gen = config.actors[0].generation_params

@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
-# Prepare three paired profiles and queue them after the WinoGrande continuation.
+# Prepare three paired profiles and queue them on an available GPU.
 set -euo pipefail
 repo=$(cd "$(dirname "$0")/.." && pwd)
 root="/home/data/$USER/projects/low-bit-reasoning/exps/1028-speed-32b"
 python="/home/data/$USER/envs/low-bit-vllm/bin/python"
 export PYTHONPATH="$repo" HF_HOME="/home/data/$USER/hf-cache"
-previous=${1:?Pass the last WinoGrande continuation job ID}
+previous=${1:-0}
 [[ $previous =~ ^[0-9]+$ ]] || exit 2
+dependency=()
+if [[ "$previous" != 0 ]]; then dependency=(--dependency="afterany:$previous"); fi
 [[ ! -f "$root/job-id.txt" ]] || { echo "ALREADY_QUEUED $(cat "$root/job-id.txt")"; exit 0; }
 mkdir -p "$root"/{w2,w4,fp16}
 "$python" - "$repo" "$root" <<'PY'
@@ -40,9 +42,9 @@ for mode in ('w2', 'w4', 'fp16'):
 PY
 common=(-A fpmi-p10 -p gpu --gres=gpu:1 --cpus-per-task=8 --mem=176G --time=08:00:00)
 args=("$repo/h200/fpmi_speed_32b_worker.sh" "$repo" "$root")
-job=$(sbatch --parsable "${common[@]}" --dependency="afterany:$previous" --job-name=lowbit-speed-32b --output="$root/run.log" "${args[@]}")
+job=$(sbatch --parsable "${common[@]}" "${dependency[@]}" --job-name=lowbit-speed-32b --output="$root/run.log" "${args[@]}")
 printf '%s\n' "$job" > "$root/job-id.txt"
-printf '%q ' sbatch "${common[@]}" --dependency="afterany:$previous" --output="$root/run.log" "${args[@]}" > "$root/cmd.txt"
+printf '%q ' sbatch "${common[@]}" "${dependency[@]}" --output="$root/run.log" "${args[@]}" > "$root/cmd.txt"
 printf '\n' >> "$root/cmd.txt"
 resume=$(sbatch --parsable "${common[@]}" --dependency="afterany:$job" --job-name=lowbit-speed-resume --output="$root/resume.log" "${args[@]}")
 printf '%s\n' "$resume" > "$root/resume-job.txt"

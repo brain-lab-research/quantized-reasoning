@@ -33,14 +33,18 @@ def main():
     from transformers import AutoTokenizer
     p = argparse.ArgumentParser()
     p.add_argument('--root', type=Path, required=True)
+    p.add_argument('--precision', choices=['fp16', 'w2'], default='w2')
     args = p.parse_args()
     original = AutoTokenizer.from_pretrained(args.root / 'model', local_files_only=True)
-    quantized = AutoTokenizer.from_pretrained(args.root / 'model-gptq2-g32', local_files_only=True)
-    validate_tokenizers(original, quantized)
-    print('TOKENIZER_PARITY_OK', flush=True)
-    model = LLM(model=str(args.root / 'model-gptq2-g32'), quantization='gptq', dtype='float16',
-                max_model_len=8192, max_num_seqs=4, kv_cache_memory_bytes=8 * 1024**3,
-                gpu_memory_utilization=0.5, enforce_eager=False)
+    model_path = args.root / ('model-gptq2-g32' if args.precision == 'w2' else 'model')
+    if args.precision == 'w2':
+        quantized = AutoTokenizer.from_pretrained(model_path, local_files_only=True)
+        validate_tokenizers(original, quantized)
+        print('TOKENIZER_PARITY_OK', flush=True)
+    kwargs = {'quantization': 'gptq'} if args.precision == 'w2' else {}
+    model = LLM(model=str(model_path), dtype='float16', max_model_len=8192,
+                max_num_seqs=4, kv_cache_memory_bytes=8 * 1024**3,
+                gpu_memory_utilization=0.5, enforce_eager=False, **kwargs)
     tok = model.get_tokenizer()
     prompts = []
     for _, question, _ in CASES:
@@ -48,19 +52,21 @@ def main():
             ' Think carefully and put the final numeric answer in \\boxed{}.'}],
             tokenize=False, add_generation_prompt=True)
         prompts.append(prompt if prompt.rstrip().endswith('<think>') else prompt + '<think>\n')
-    outputs = model.generate(prompts, SamplingParams(temperature=0, max_tokens=4096), use_tqdm=False)
+    token_prompts = [{'prompt_token_ids': tok.encode(s, add_special_tokens=False)} for s in prompts]
+    outputs = model.generate(token_prompts, SamplingParams(temperature=0, max_tokens=4096), use_tqdm=False)
     records = []
     for (name, question, expected), result in zip(CASES, outputs):
         answer = result.outputs[0]
         parsed = extract_last_boxed(answer.text)
         records.append({'case': name, 'question': question, 'expected': expected, 'parsed': parsed,
                         'correct': parsed is not None and parsed.strip() == expected,
+                        'prompt_token_ids': list(result.prompt_token_ids),
                         'text': answer.text, 'token_ids': list(answer.token_ids),
                         'finish_reason': answer.finish_reason})
-    out = args.root / 'w2-quality-smoke.json'
+    out = args.root / ('quality-smoke-v2-' + args.precision + '.json')
     out.write_text(json.dumps({'cases': records, 'correct': sum(x['correct'] for x in records)},
                               ensure_ascii=False, indent=2), encoding='utf8')
-    print('W2_QUALITY_SMOKE', sum(x['correct'] for x in records), '/', len(records), flush=True)
+    print(args.precision.upper() + '_QUALITY_SMOKE', sum(x['correct'] for x in records), '/', len(records), flush=True)
     if sum(x['correct'] for x in records) < 2:
         raise RuntimeError('W2 passed fewer than two simple checks; inspect outputs before full evaluation')
     del model

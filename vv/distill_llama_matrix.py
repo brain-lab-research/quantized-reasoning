@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Full FP16 DeepSeek-R1-Distill-Llama-8B benchmark collection."""
 import argparse
+import contextlib
 import json
 import subprocess
 import sys
@@ -44,13 +45,28 @@ def prepare_tasks(root, precision='fp16'):
     return selected
 
 
-def run(root, model_path, precision):
+def run(root, model_path, precision, shared=False):
     tasks = json.loads((root / ('matrix-' + precision + '.json')).read_text())
     for task in tasks:
         cfg = Path(task['config'])
+        if shared:
+            import fcntl
+            lock = (cfg.parent / '.claim').open('w')
+            try:
+                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                lock.close()
+                continue
+        else:
+            lock = contextlib.nullcontext()
+        with lock:
+            run_one(task, cfg, model_path)
+
+
+def run_one(task, cfg, model_path):
         if task_complete(task):
             print('TASK_SKIP_COMPLETE', cfg.parent.name, flush=True)
-            continue
+            return
         cmd = [sys.executable, str(REPO / 'scripts/collect_baseline_traces.py'), str(cfg),
                '--output', str(cfg.parent / 'artifacts'), '--max-examples', str(task['count']),
                '--max-num-seqs', '32', '--kv-cache-gib', '80', '--memory-utilization', '0.85',
@@ -70,13 +86,14 @@ def main():
     p.add_argument('--prepare', action='store_true')
     p.add_argument('--model-path', type=Path)
     p.add_argument('--precision', choices=['fp16', 'w2'], default='fp16')
+    p.add_argument('--shared', action='store_true', help='Claim benchmark tasks across workers')
     args = p.parse_args()
     if args.prepare:
         print('PREPARED_TASKS', len(prepare_tasks(args.root, args.precision)))
     else:
         if not args.model_path:
             p.error('--model-path is required')
-        run(args.root, args.model_path, args.precision)
+        run(args.root, args.model_path, args.precision, shared=args.shared)
 
 
 if __name__ == '__main__':

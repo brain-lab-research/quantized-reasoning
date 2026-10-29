@@ -1,5 +1,7 @@
 from vv.distill_llama_matrix import prepare_tasks
 from vv.prepare_distill_teacher import is_correct
+from vv.smoke_distill_w2_quality import validate_tokenizers
+import pytest
 
 
 def test_all_nine_full_benchmarks_are_assigned_to_the_correct_model(tmp_path):
@@ -24,3 +26,14 @@ def test_teacher_selection_checks_synthetic_answers():
     assert is_correct({'answer_kind': 'math', 'ground_truth': '48/91'}, r'\boxed{\dfrac{48}{91}}')
     assert is_correct({'answer_kind': 'math', 'ground_truth': '-3/5'}, r'\boxed{-\frac{3}{5}}')
     assert not is_correct({'answer_kind': 'math', 'ground_truth': '48/91'}, r'\boxed{\frac{47}{91}}')
+
+
+def test_tokenizer_check_rejects_different_token_ids():
+    class FakeTokenizer:
+        eos_token_id = 2
+        def __init__(self, token): self.token = token
+        def get_vocab(self): return {'same': 1}
+        def apply_chat_template(self, messages, **kwargs): return [1, self.token]
+    validate_tokenizers(FakeTokenizer(3), FakeTokenizer(3))
+    with pytest.raises(ValueError, match='token IDs differ'):
+        validate_tokenizers(FakeTokenizer(3), FakeTokenizer(4))

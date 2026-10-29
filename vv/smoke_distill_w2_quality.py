@@ -17,11 +17,27 @@ CASES = [
 ]
 
 
+def validate_tokenizers(fp16, w2):
+    if fp16.get_vocab() != w2.get_vocab() or fp16.eos_token_id != w2.eos_token_id:
+        raise ValueError('FP16 and W2 tokenizer vocabulary or EOS differ')
+    for _, question, _ in CASES:
+        messages = [{'role': 'user', 'content': question}]
+        a = fp16.apply_chat_template(messages, tokenize=True, add_generation_prompt=True)
+        b = w2.apply_chat_template(messages, tokenize=True, add_generation_prompt=True)
+        if a != b:
+            raise ValueError(f'FP16 and W2 token IDs differ for {question}')
+
+
 def main():
     from vllm import LLM, SamplingParams
+    from transformers import AutoTokenizer
     p = argparse.ArgumentParser()
     p.add_argument('--root', type=Path, required=True)
     args = p.parse_args()
+    original = AutoTokenizer.from_pretrained(args.root / 'model', local_files_only=True)
+    quantized = AutoTokenizer.from_pretrained(args.root / 'model-gptq2-g32', local_files_only=True)
+    validate_tokenizers(original, quantized)
+    print('TOKENIZER_PARITY_OK', flush=True)
     model = LLM(model=str(args.root / 'model-gptq2-g32'), quantization='gptq', dtype='float16',
                 max_model_len=8192, max_num_seqs=4, kv_cache_memory_bytes=8 * 1024**3,
                 gpu_memory_utilization=0.5, enforce_eager=False)

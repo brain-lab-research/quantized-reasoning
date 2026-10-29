@@ -3,6 +3,7 @@
 import argparse
 import hashlib
 import json
+import shutil
 from pathlib import Path
 
 
@@ -43,13 +44,24 @@ def main():
     print('GPTQ_START', len(windows), flush=True)
     model.quantize(calibration=windows, batch_size=1, tokenizer=tokenizer)
     model.save(str(staging))
-    tokenizer.save_pretrained(staging)
+    # Preserve the exact source tokenizer. Re-serializing under Transformers 5
+    # changed token IDs when the checkpoint was later loaded by vLLM's v4 stack.
+    source = args.root / 'model'
+    for name in ('tokenizer.json', 'tokenizer_config.json', 'tokenizer.model',
+                 'special_tokens_map.json', 'chat_template.jinja'):
+        original, dest = source / name, staging / name
+        if original.exists():
+            shutil.copy2(original, dest)
+        elif dest.exists() and name == 'chat_template.jinja':
+            dest.unlink()
     (staging / 'calibration-provenance.json').write_text(json.dumps({
         'bits': 2, 'group_size': 32, 'desc_act': False, 'sym': True,
         'c4_windows': len(c4), 'teacher_windows': len(teacher),
         'c4_sha256': hashlib.sha256(c4_path.read_bytes()).hexdigest(),
         'teacher_sha256': hashlib.sha256(teacher_path.read_bytes()).hexdigest(),
         'teacher': source_meta['teacher'], 'benchmark_examples_used': False,
+        'tokenizer_json_sha256': hashlib.sha256((source / 'tokenizer.json').read_bytes()).hexdigest(),
+        'tokenizer_config_sha256': hashlib.sha256((source / 'tokenizer_config.json').read_bytes()).hexdigest(),
         'source_model': json.loads((args.root / 'model-revision.json').read_text())}, indent=2))
     staging.rename(output)
     print('GPTQ_DONE', output, flush=True)

@@ -94,6 +94,7 @@ def main():
     p.add_argument("--max-num-seqs", type=int, default=16)
     p.add_argument("--kv-cache-gib", type=float, default=80)
     p.add_argument("--memory-utilization", type=float, default=0.8)
+    p.add_argument("--model-path", type=str, default=None, help="Local weights; keep canonical model ID in saved config")
     p.add_argument("--chat-template", action="store_true")
     p.add_argument("--open-thinking", action="store_true")
     args = p.parse_args()
@@ -161,7 +162,7 @@ def main():
         print("ALREADY_COMPLETE", flush=True)
         return
     actor = config.actors[0]
-    backend = VLLMBackend(actor.model_id, precision=PrecisionMode(actor.precision),
+    backend = VLLMBackend(args.model_path or actor.model_id, precision=PrecisionMode(actor.precision),
                           quantization=QuantizationMethod(actor.quantization),
                           **actor.backend_kwargs)
     backend.load()

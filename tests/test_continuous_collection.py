@@ -50,6 +50,29 @@ def test_chat_recipe_uses_model_template_instead_of_qwen_markers():
     assert "\\boxed{}" in examples[0].prompt
 
 
+def test_native_chat_preserves_multiple_choice_question_and_instructions():
+    module = load_collector()
+    examples = [SimpleNamespace(prompt='<|im_start|>system\nChoose a letter.<|im_end|>\n'
+        '<|im_start|>user\nWhich? A) one B) two<|im_end|>\n<|im_start|>assistant\n')]
+
+    class Tokenizer:
+        def apply_chat_template(self, messages, **kwargs):
+            assert kwargs == {'tokenize': False, 'add_generation_prompt': True}
+            assert messages == [{'role': 'user', 'content': 'Choose a letter.\n\nWhich? A) one B) two'}]
+            return 'MODEL_ASSISTANT\n'
+
+    module.format_native_prompts(examples, Tokenizer())
+    assert examples[0].prompt == 'MODEL_ASSISTANT\n<think>\n'
+
+    examples[0].prompt = '<|im_start|>system\nChoose a letter.<|im_end|>\n<|im_start|>user\nWhich? A) one B) two<|im_end|>\n<|im_start|>assistant\n'
+    class ThinkingTokenizer(Tokenizer):
+        def apply_chat_template(self, messages, **kwargs):
+            super().apply_chat_template(messages, **kwargs)
+            return 'MODEL_ASSISTANT\n<think>\n'
+    module.format_native_prompts(examples, ThinkingTokenizer())
+    assert examples[0].prompt == 'MODEL_ASSISTANT\n<think>\n'
+
+
 def test_requested_shards_cover_winogrande_without_overlap():
     module = load_collector()
     from quantlab.runner import _load_benchmark_examples

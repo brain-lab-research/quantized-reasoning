@@ -46,6 +46,23 @@ def format_chat_prompts(examples, tokenizer, benchmark):
         )
 
 
+def format_native_prompts(examples, tokenizer):
+    """Translate the existing benchmark instructions to a model's chat template."""
+    from quantlab.core.trace import extract_chat_user_content
+    for example in examples:
+        prompt = example.prompt
+        marker = '<|im_start|>system\n'
+        if not prompt.startswith(marker) or '<|im_end|>' not in prompt:
+            raise ValueError('Expected a Qwen benchmark system/user prompt')
+        system = prompt[len(marker):prompt.index('<|im_end|>')].strip()
+        user = extract_chat_user_content(prompt)
+        formatted = tokenizer.apply_chat_template(
+            [{'role': 'user', 'content': system + '\n\n' + user}],
+            tokenize=False, add_generation_prompt=True,
+        )
+        example.prompt = formatted if formatted.rstrip().endswith('<think>') else formatted + '<think>\n'
+
+
 def reuse_judgements(root, config, examples):
     from quantlab.artifacts.store import ArtifactStore
     expected = {e.example_id: e.prompt for e in examples}
@@ -96,6 +113,7 @@ def main():
     p.add_argument("--memory-utilization", type=float, default=0.8)
     p.add_argument("--model-path", type=str, default=None, help="Local weights; keep canonical model ID in saved config")
     p.add_argument("--chat-template", action="store_true")
+    p.add_argument("--native-chat", action="store_true", help="Preserve benchmark instructions in model-native chat format")
     p.add_argument("--open-thinking", action="store_true")
     args = p.parse_args()
     raw = yaml.safe_load(args.config.read_text())
@@ -120,6 +138,8 @@ def main():
     raw["wandb"] = {"enabled": False}
     if args.chat_template:
         raw["description"] = raw.get("description", "") + " Prompt recipe: tokenizer_chat."
+    if args.native_chat:
+        raw["description"] = raw.get("description", "") + " Prompt recipe: native_chat_with_benchmark_instruction."
     if args.open_thinking:
         raw["description"] = raw.get("description", "") + " Original-paper open-think scaffold."
     config = ExperimentConfig.model_validate(raw)
@@ -135,6 +155,12 @@ def main():
         from transformers import AutoTokenizer
         tokenizer = AutoTokenizer.from_pretrained(config.actors[0].model_id)
         format_chat_prompts(examples, tokenizer, config.benchmark.name)
+    if args.native_chat:
+        if args.chat_template or args.open_thinking:
+            raise ValueError('native-chat cannot be combined with other prompt recipes')
+        from transformers import AutoTokenizer
+        tokenizer = AutoTokenizer.from_pretrained(args.model_path or config.actors[0].model_id)
+        format_native_prompts(examples, tokenizer)
     reused = {}
     for reuse_root in args.reuse_root:
         reused.update(reuse_judgements(reuse_root, config, examples))

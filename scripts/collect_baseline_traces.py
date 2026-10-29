@@ -63,6 +63,11 @@ def format_native_prompts(examples, tokenizer):
         example.prompt = formatted if formatted.rstrip().endswith('<think>') else formatted + '<think>\n'
 
 
+def engine_prompt(prompt, tokenizer, native_chat):
+    """Do not let vLLM add a second BOS to an already templated native prompt."""
+    return {'prompt_token_ids': tokenizer.encode(prompt, add_special_tokens=False)} if native_chat else prompt
+
+
 def reuse_judgements(root, config, examples):
     from quantlab.artifacts.store import ArtifactStore
     expected = {e.example_id: e.prompt for e in examples}
@@ -139,7 +144,7 @@ def main():
     if args.chat_template:
         raw["description"] = raw.get("description", "") + " Prompt recipe: tokenizer_chat."
     if args.native_chat:
-        raw["description"] = raw.get("description", "") + " Prompt recipe: native_chat_with_benchmark_instruction."
+        raw["description"] = raw.get("description", "") + " Prompt recipe: native_chat_explicit_token_ids_v2."
     if args.open_thinking:
         raw["description"] = raw.get("description", "") + " Original-paper open-think scaffold."
     config = ExperimentConfig.model_validate(raw)
@@ -203,7 +208,7 @@ def main():
                             stop=gen.stop_sequences or None,
                             output_kind=RequestOutputKind.FINAL_ONLY)
     for eid, example in pending.items():
-        engine.add_request(eid, example.prompt, params)
+        engine.add_request(eid, engine_prompt(example.prompt, tokenizer if args.native_chat else None, args.native_chat), params)
     metrics = [MetricRegistry.build(m.name, **m.kwargs) for m in config.metrics]
     started = time.monotonic()
     tokens = 0
@@ -215,6 +220,7 @@ def main():
             actor.actor_id, generated.text, len(generated.token_ids), 0,
             role=SegmentRole.ANSWER, llm_prompt_full=example.prompt,
             metadata={"token_ids": list(generated.token_ids),
+                      **({'prompt_token_ids': list(output.prompt_token_ids)} if args.native_chat else {}),
                       "finish_reason": generated.finish_reason,
                       "serving_mode": "continuous"},
         ))

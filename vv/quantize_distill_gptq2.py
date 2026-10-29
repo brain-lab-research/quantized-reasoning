@@ -16,12 +16,14 @@ def main():
     from transformers import AutoTokenizer
     p = argparse.ArgumentParser()
     p.add_argument('--root', type=Path, required=True)
+    p.add_argument('--c4-count', type=int, default=192)
+    p.add_argument('--teacher-count', type=int, default=64)
     args = p.parse_args()
     calib = args.root / 'calibration'
     c4_path, teacher_path = calib / 'c4-windows.jsonl', calib / 'teacher-windows.jsonl'
     c4, teacher = read_rows(c4_path), read_rows(teacher_path)
-    if len(c4) != 192 or len(teacher) != 64:
-        raise ValueError(f'Expected 192 C4 + 64 teacher windows; got {len(c4)} + {len(teacher)}')
+    if len(c4) != args.c4_count or len(teacher) != args.teacher_count:
+        raise ValueError(f'Expected {args.c4_count} C4 + {args.teacher_count} teacher windows; got {len(c4)} + {len(teacher)}')
     source_meta = json.loads((calib / 'teacher-metadata.json').read_text())
     if source_meta.get('benchmark_examples_used') is not False:
         raise ValueError('Synthetic calibration provenance is missing')

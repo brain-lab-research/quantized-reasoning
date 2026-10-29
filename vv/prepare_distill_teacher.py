@@ -88,6 +88,8 @@ def main():
                 ids = tokenizer.encode(record['prompt'] + record['text'], add_special_tokens=False)
                 retokenized += 1
                 rebuilt = True
+            if tokenizer.bos_token_id is not None and ids[:2] == [tokenizer.bos_token_id] * 2:
+                ids = ids[1:]
             if tokenizer.eos_token_id is not None and (not ids or ids[-1] != tokenizer.eos_token_id):
                 ids.append(tokenizer.eos_token_id)
             selected.append({'input_ids': ids, 'attention_mask': [1] * len(ids),
@@ -106,7 +108,8 @@ def main():
             prompts = [tokenizer.apply_chat_template([{'role': 'user', 'content': r['user_prompt']}],
                        tokenize=False, add_generation_prompt=True) for r in candidates]
             prompts = [s if s.rstrip().endswith('<think>') else s + '<think>\n' for s in prompts]
-            outputs = model.generate(prompts, sampling, use_tqdm=False)
+            token_prompts = [{'prompt_token_ids': tokenizer.encode(s, add_special_tokens=False)} for s in prompts]
+            outputs = model.generate(token_prompts, sampling, use_tqdm=False)
             for row, prompt, result in zip(candidates, prompts, outputs):
                 answer = result.outputs[0]
                 ok = bool(answer.finish_reason == 'stop' and '</think>' in answer.text and is_correct(row, answer.text))

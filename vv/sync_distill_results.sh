@@ -16,7 +16,7 @@ while true; do
     fi
     for dir in "$root"/calibration "$root"/1029-r1-distill-llama-8b-*-fp16 "$root"/1029-r1-distill-llama-8b-*-w2; do
         [[ -d "$dir" ]] || continue
-        "$python" "$repo/h200/sync.py" --root "$dir" --prefix "shveikinda/vv/1029-r1-distill-llama-8b/$(basename "$dir")" || echo BACKUP_RETRY
+        "$python" "$repo/h200/sync.py" --root "$dir" --prefix "shveikinda/vv/$(basename "$root")/$(basename "$dir")" || echo BACKUP_RETRY
     done
     echo "SYNC_PASS total=$total"
     sleep 180

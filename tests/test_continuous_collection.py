@@ -89,3 +89,14 @@ def test_requested_shards_cover_winogrande_without_overlap():
         shards.append(_load_benchmark_examples(Adapter(), cfg))
     assert shards[0] == list(range(800))
     assert shards[1] == list(range(800, 1267))
+
+
+def test_native_engine_prompt_uses_explicit_tokens_without_added_bos():
+    module = load_collector()
+    class Tokenizer:
+        def encode(self, text, add_special_tokens):
+            assert text == '<bos>question'
+            assert add_special_tokens is False
+            return [1, 2]
+    assert module.engine_prompt('<bos>question', Tokenizer(), True) == {'prompt_token_ids': [1, 2]}
+    assert module.engine_prompt('legacy', None, False) == 'legacy'

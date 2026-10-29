@@ -21,3 +21,6 @@ def test_teacher_selection_checks_synthetic_answers():
     assert not is_correct({'answer_kind': 'math', 'ground_truth': '35'}, r'Work. \boxed{36}')
     assert is_correct({'answer_kind': 'choice', 'ground_truth': 'C'}, r'Final \boxed{C}')
     assert not is_correct({'answer_kind': 'choice', 'ground_truth': 'C'}, 'I think C')
+    assert is_correct({'answer_kind': 'math', 'ground_truth': '48/91'}, r'\boxed{\dfrac{48}{91}}')
+    assert is_correct({'answer_kind': 'math', 'ground_truth': '-3/5'}, r'\boxed{-\frac{3}{5}}')
+    assert not is_correct({'answer_kind': 'math', 'ground_truth': '48/91'}, r'\boxed{\frac{47}{91}}')

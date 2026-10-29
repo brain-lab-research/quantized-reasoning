@@ -16,11 +16,14 @@ class FakeS3:
         old = self.rows.get((Bucket, Key))
         if IfNoneMatch == '*' and old or IfMatch is not None and (not old or old[0] != IfMatch):
             raise Conflict()
-        self.version += 1; etag = str(self.version); self.rows[(Bucket, Key)] = (etag, Body)
+        self.version += 1; etag = str(self.version); self.rows[(Bucket, Key)] = (etag, Body, Metadata or {})
         return {'ETag': etag}
     def get_object(self, Bucket, Key):
-        tag, body = self.rows[(Bucket, Key)]
-        return {'ETag': tag, 'Body': io.BytesIO(body)}
+        tag, body, metadata = self.rows[(Bucket, Key)]
+        return {'ETag': tag, 'Body': io.BytesIO(body), 'Metadata': metadata}
+    def head_object(self, Bucket, Key):
+        tag, _, metadata = self.rows[(Bucket, Key)]
+        return {'ETag': tag, 'Metadata': metadata}
 
 
 def test_two_ends_cannot_claim_same_example_and_done_is_durable():

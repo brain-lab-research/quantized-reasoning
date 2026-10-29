@@ -35,6 +35,16 @@ for worker in a b; do
     done
     echo "WORKER_$worker $(tr '\n' ' ' < "$root/jobs-$worker.txt")"
 done
+last_a=$(tail -n 1 "$root/jobs-a.txt"); last_b=$(tail -n 1 "$root/jobs-b.txt")
+audit=$(sbatch --parsable -A fpmi-p10 -p cpu --cpus-per-task=1 --mem=2G --time=08:00:00 \
+    --dependency="afterany:$last_a:$last_b" --job-name=shared-w2-audit --output="$root/audit-0.log" \
+    "$repo/h200/shared_distill_w2_audit.sh" "$repo" "$root")
+created+=("$audit"); printf '%s\n' "$audit" > "$root/audit-jobs.txt"
+next=$(sbatch --parsable -A fpmi-p10 -p cpu --cpus-per-task=1 --mem=2G --time=08:00:00 \
+    --dependency="afterany:$audit" --job-name=shared-w2-audit-r --output="$root/audit-1.log" \
+    "$repo/h200/shared_distill_w2_audit.sh" "$repo" "$root")
+created+=("$next"); printf '%s\n' "$next" >> "$root/audit-jobs.txt"
+echo "AUDIT=$audit,$next"
 scontrol release "$gate"
 trap - EXIT
 echo "GATE=$gate W4_ACTIVE=${active[*]:-none}"

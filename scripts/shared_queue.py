@@ -27,16 +27,25 @@ class SharedQueue:
                     'prompt_sha256': hashlib.sha256(prompt.encode()).hexdigest(),
                     'fingerprint': self.fingerprint}
         record = {**identity, 'owner': self.owner, 'state': 'claimed'}
+        metadata = {'state': 'claimed', 'owner': self.owner, 'fingerprint': self.fingerprint,
+                    'prompt-sha256': identity['prompt_sha256']}
         try:
             result = self.client.put_object(Bucket=self.bucket, Key=key, Body=self._body(record),
-                                            Metadata={'state': 'claimed', 'owner': self.owner}, IfNoneMatch='*')
+                                            Metadata=metadata, IfNoneMatch='*')
             return result['ETag']
         except Exception as exc:
             error = getattr(exc, 'response', {}).get('Error', {}).get('Code')
             if error not in ('PreconditionFailed', '412', 'ConditionalRequestConflict', '409'):
                 raise
-        current = self.client.get_object(Bucket=self.bucket, Key=key)
-        saved = json.loads(current['Body'].read())
+        current = self.client.head_object(Bucket=self.bucket, Key=key)
+        meta = current.get('Metadata', {})
+        if meta.get('fingerprint') and meta.get('prompt-sha256'):
+            saved = {**identity, 'fingerprint': meta['fingerprint'], 'prompt_sha256': meta['prompt-sha256'],
+                     'owner': meta.get('owner'), 'state': meta.get('state')}
+        else:
+            # Older pre-seeded items do not have identity metadata.
+            current = self.client.get_object(Bucket=self.bucket, Key=key)
+            saved = json.loads(current['Body'].read())
         if any(saved.get(k) != v for k, v in identity.items()):
             raise ValueError(f'Queue identity mismatch for {benchmark}/{example_id}')
         if saved.get('state') == 'claimed' and saved.get('owner') == self.owner:
@@ -49,4 +58,6 @@ class SharedQueue:
                   'fingerprint': self.fingerprint, 'owner': self.owner,
                   'state': 'done', 'result': result}
         self.client.put_object(Bucket=self.bucket, Key=self.key(benchmark, example_id),
-                               Body=self._body(record), Metadata={'state': 'done', 'owner': self.owner}, IfMatch=etag)
+                               Body=self._body(record), Metadata={'state': 'done', 'owner': self.owner,
+                                                                  'fingerprint': self.fingerprint,
+                                                                  'prompt-sha256': record['prompt_sha256']}, IfMatch=etag)

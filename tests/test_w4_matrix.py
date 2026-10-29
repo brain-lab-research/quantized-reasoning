@@ -10,3 +10,10 @@ def test_full_matrix_excludes_existing_gpqa_and_is_idempotent(tmp_path):
     assert (32, 'gpqa_diamond') not in {(t['size'], t['benchmark']) for t in first}
     assert all(t['precision'] == 'w4' for t in first)
     assert all(t['count'] > 0 for t in first)
+
+
+def test_only_32b_full_benchmarks(tmp_path):
+    tasks = prepare_w4(tmp_path, sizes=(32,))
+    assert len(tasks) == 8
+    assert all(t['size'] == 32 for t in tasks)
+    assert 'gpqa_diamond' not in {t['benchmark'] for t in tasks}

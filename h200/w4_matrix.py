@@ -17,11 +17,11 @@ ORDER = ['strategyqa', 'aime2026', 'arc_challenge', 'winogrande', 'piqa',
          'arc_easy', 'gpqa_diamond', 'gsm8k', 'math500']
 
 
-def prepare_w4(root):
+def prepare_w4(root, sizes=(8, 32)):
     tasks = prepare(root / 'source', full_benchmarks=True)
     selected = []
     for source in tasks:
-        if source['precision'] != 'w2' or (source['size'], source['benchmark']) == (32, 'gpqa_diamond'):
+        if source['precision'] != 'w2' or source['size'] not in sizes or (source['size'], source['benchmark']) == (32, 'gpqa_diamond'):
             continue
         cfg = yaml.safe_load(Path(source['config']).read_text())
         size, bench = source['size'], source['benchmark']
@@ -100,10 +100,11 @@ def main():
     p.add_argument('--root', type=Path, required=True)
     p.add_argument('--prepare', action='store_true')
     p.add_argument('--worker', choices=['a', 'b'])
+    p.add_argument('--sizes', nargs='+', type=int, choices=[8, 32], default=[8, 32])
     p.add_argument('--stage', type=Path)
     a = p.parse_args()
     if a.prepare:
-        print('PREPARED_TASKS', len(prepare_w4(a.root)))
+        print('PREPARED_TASKS', len(prepare_w4(a.root, a.sizes)))
     else:
         if not a.worker or not a.stage:
             p.error('worker and stage are required')

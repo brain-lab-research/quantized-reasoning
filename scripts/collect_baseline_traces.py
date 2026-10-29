@@ -144,6 +144,10 @@ def main():
         raw["description"] = raw.get("description", "") + " Original-paper open-think scaffold."
     config = ExperimentConfig.model_validate(raw)
     adapter = BenchmarkRegistry.build(config.benchmark.name)
+    if args.native_chat and config.benchmark.name == 'gpqa_diamond':
+        # The original case-sensitive parser must not treat the article "a" as option A.
+        from scripts.measure_gpqa_rescue import paper_gpqa_choice
+        adapter.extract_answer = paper_gpqa_choice
     examples = _load_benchmark_examples(adapter, config.benchmark)
     if args.open_thinking:
         for example in examples:

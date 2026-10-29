@@ -31,7 +31,12 @@ def main():
     p.add_argument('--root', type=Path, required=True)
     p.add_argument('--count', type=int, default=64)
     args = p.parse_args()
-    rows = [json.loads(x) for x in (args.root / 'training_candidates.jsonl').read_bytes().splitlines()]
+    candidate_bytes = (args.root / 'training_candidates.jsonl').read_bytes()
+    source = json.loads((args.root / 'READY.json').read_text(encoding='utf8'))
+    digest = hashlib.sha256(candidate_bytes).hexdigest()
+    if digest != source.get('candidate_catalog_sha256') or source.get('benchmark_examples_used') is not False:
+        raise ValueError('Synthetic calibration source hash or decontamination metadata does not match')
+    rows = [json.loads(x) for x in candidate_bytes.splitlines()]
     families = collections.defaultdict(list)
     for row in rows:
         families[int(row['family'])].append(row)
@@ -82,7 +87,7 @@ def main():
     (out / 'teacher-metadata.json').write_text(json.dumps({
         'teacher': 'deepseek-ai/DeepSeek-R1-Distill-Llama-8B', 'sampling': {'temperature': 0.6,
         'top_p': 0.95, 'top_k': 20, 'seed': 42, 'max_new_tokens': 8192},
-        'source_sha256': hashlib.sha256((args.root / 'training_candidates.jsonl').read_bytes()).hexdigest(),
+        'source_sha256': digest,
         'selected_per_family': dict(counts), 'benchmark_examples_used': False}, indent=2))
     print('TEACHER_READY', len(selected), flush=True)
     del model

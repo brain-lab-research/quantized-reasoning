@@ -28,6 +28,20 @@ def test_shared_worker_skips_claimed_benchmark(tmp_path, monkeypatch):
     assert len(visited) == 8
 
 
+@pytest.mark.skipif(os.name != 'posix', reason='advisory worker locks require POSIX')
+def test_availability_skips_complete_and_claimed_tasks(tmp_path, monkeypatch):
+    import fcntl
+    import vv.distill_llama_matrix as matrix
+    tasks = prepare_tasks(tmp_path)
+    target = tasks[0]['benchmark']
+    monkeypatch.setattr(matrix, 'task_complete', lambda task: task['benchmark'] != target)
+    assert matrix.has_available_task(tmp_path, 'fp16')
+    claim = tmp_path / ('1029-r1-distill-llama-8b-' + target + '-fp16') / '.claim'
+    with claim.open('w') as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        assert not matrix.has_available_task(tmp_path, 'fp16')
+
+
 def test_w2_matrix_is_distinct_and_complete(tmp_path):
     tasks = prepare_tasks(tmp_path, precision='w2')
     assert len(tasks) == 9

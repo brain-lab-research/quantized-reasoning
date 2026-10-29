@@ -63,6 +63,22 @@ def run(root, model_path, precision, shared=False):
             run_one(task, cfg, model_path)
 
 
+def has_available_task(root, precision):
+    """Avoid loading another model when all remaining tasks are already claimed."""
+    import fcntl
+    tasks = json.loads((root / ('matrix-' + precision + '.json')).read_text())
+    for task in tasks:
+        cfg = Path(task['config'])
+        with (cfg.parent / '.claim').open('w') as lock:
+            try:
+                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                continue
+            if not task_complete(task):
+                return True
+    return False
+
+
 def run_one(task, cfg, model_path):
         if task_complete(task):
             print('TASK_SKIP_COMPLETE', cfg.parent.name, flush=True)
@@ -87,8 +103,11 @@ def main():
     p.add_argument('--model-path', type=Path)
     p.add_argument('--precision', choices=['fp16', 'w2'], default='fp16')
     p.add_argument('--shared', action='store_true', help='Claim benchmark tasks across workers')
+    p.add_argument('--check-available', action='store_true', help='Exit 3 when all remaining tasks are claimed or complete')
     args = p.parse_args()
-    if args.prepare:
+    if args.check_available:
+        sys.exit(0 if has_available_task(args.root, args.precision) else 3)
+    elif args.prepare:
         print('PREPARED_TASKS', len(prepare_tasks(args.root, args.precision)))
     else:
         if not args.model_path:

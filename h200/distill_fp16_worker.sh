@@ -7,6 +7,12 @@ export WANDB_MODE=offline PYTHONUNBUFFERED=1 TOKENIZERS_PARALLELISM=false
 export OMP_NUM_THREADS=4 OPENBLAS_NUM_THREADS=4 VLLM_WORKER_MULTIPROC_METHOD=spawn
 unset ROCR_VISIBLE_DEVICES
 cd "$repo"
+set +e
+"$python" "$repo/vv/distill_llama_matrix.py" --root "$root" --precision fp16 --check-available
+available_rc=$?
+set -e
+if ((available_rc == 3)); then echo NO_AVAILABLE_DISTILL_TASKS; exit 0; fi
+if ((available_rc != 0)); then exit "$available_rc"; fi
 started=$SECONDS
 stage=$(mktemp -d "/dev/shm/lowbit-distill-${SLURM_JOB_ID:?}-XXXXXXXX")
 set -a; . "$HOME/.s3-cod.env"; set +a
@@ -38,7 +44,17 @@ snapshot_download('deepseek-ai/DeepSeek-R1-Distill-Llama-8B',revision=revision,
 print('DOWNLOAD_DONE',flush=True)
 PY
 smoke="$root/smoke-$worker"
-if [[ ! -f "$smoke/run-id.txt" ]]; then
+if ! "$python" - "$smoke" <<'PY'
+import json,sys
+from pathlib import Path
+p=Path(sys.argv[1]); pointer=p/'run-id.txt'
+try:
+    s=json.loads((p/pointer.read_text().strip()/'summary.json').read_text())
+    assert s.get('n_judged')==2 and s.get('n_errors')==0 and s.get('generated_tokens',0)>0
+except (OSError,ValueError,AssertionError):
+    sys.exit(1)
+PY
+then
     "$python" "$repo/scripts/collect_baseline_traces.py" "$root/1029-r1-distill-llama-8b-strategyqa-fp16/cfg.yaml" \
         --output "$smoke" --max-examples 2 --max-tokens 128 --max-num-seqs 2 --kv-cache-gib 8 \
         --memory-utilization 0.5 --native-chat --model-path "$stage/model"

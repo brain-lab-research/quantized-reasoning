@@ -134,6 +134,20 @@ def main():
     backend = VLLMBackend(args.model_path, precision=PrecisionMode(actor.precision),
                           quantization=QuantizationMethod(actor.quantization), **actor.backend_kwargs)
     backend.load()
+    if args.ready_barrier:
+        # Validate the replacement engine before the old VV process is stopped.
+        probe = tokenizer.apply_chat_template([{'role': 'user', 'content': 'Compute 2 + 3.'}],
+                                              tokenize=False, add_generation_prompt=True)
+        if not probe.rstrip().endswith('<think>'):
+            probe += '<think>\n'
+        token_ids = tokenizer.encode(probe, add_special_tokens=False)
+        if token_ids.count(tokenizer.bos_token_id) != 1:
+            raise ValueError('Replacement engine smoke requires exactly one BOS')
+        out = backend._llm.generate([{'prompt_token_ids': token_ids}],
+                                    SamplingParams(temperature=0, max_tokens=32), use_tqdm=False)
+        if len(out) != 1 or not out[0].outputs[0].token_ids:
+            raise RuntimeError('Replacement engine GPU smoke produced no tokens')
+        print('HANDOFF_GPU_SMOKE_OK', flush=True)
     if coordinator is not None:
         # Repair interrupted writes: republish records owned by this worker.
         for ctx in contexts:

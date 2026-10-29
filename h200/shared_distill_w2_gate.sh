@@ -5,6 +5,7 @@ w4="/home/data/$USER/projects/low-bit-reasoning/exps/1029-w4-32b-full"
 gpqa="/home/data/$USER/projects/low-bit-reasoning/exps/1029-gpqa-w4-full/artifacts/summary.json"
 export PYTHONPATH="$repo"
 python="/home/data/$USER/envs/low-bit-vllm/bin/python"
+if [[ "${2:-after-w4}" != priority ]]; then
 "$python" - "$w4" "$gpqa" <<'PY'
 import json,sys
 from pathlib import Path
@@ -15,6 +16,7 @@ if len(tasks)!=8 or any(not task_complete(t) for t in tasks) or not gpqa.get('co
     raise SystemExit('W4_INCOMPLETE')
 print('W4_COMPLETE',flush=True)
 PY
+fi
 set -a; . "$HOME/.s3-cod.env"; set +a
 "$python" - <<'PY'
 import json,time,boto3

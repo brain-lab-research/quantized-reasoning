@@ -8,6 +8,7 @@ export OMP_NUM_THREADS=4 OPENBLAS_NUM_THREADS=4 VLLM_WORKER_MULTIPROC_METHOD=spa
 unset ROCR_VISIBLE_DEVICES
 cd "$repo"
 started=$SECONDS
+ids_file=${W4_JOB_IDS_FILE:-"$root/jobs-$worker.txt"}
 stage=$(mktemp -d "/dev/shm/lowbit-w4-${SLURM_JOB_ID:?}-XXXXXXXX")
 set -a; . "$HOME/.s3-cod.env"; set +a
 sync_once() { "$python" "$repo/h200/sync.py" --root "$root" --prefix "shveikinda/h200/low-bit/$(basename "$root")"; }
@@ -17,8 +18,8 @@ finish() {
     kill "$sync_pid" 2>/dev/null || true
     sync_once || rc=1
     case "$stage" in /dev/shm/lowbit-w4-"$SLURM_JOB_ID"-*) rm -rf -- "$stage" ;; *) rc=1 ;; esac
-    if (( rc != 0 && SECONDS-started < 2400 )) && [[ -f "$root/jobs-$worker.txt" ]]; then
-        while read -r job; do [[ "$job" == "$SLURM_JOB_ID" ]] || scancel "$job" 2>/dev/null || true; done < "$root/jobs-$worker.txt"
+    if (( rc != 0 && SECONDS-started < 2400 )) && [[ -f "$ids_file" ]]; then
+        while read -r job; do [[ "$job" == "$SLURM_JOB_ID" ]] || scancel "$job" 2>/dev/null || true; done < "$ids_file"
     fi
     exit "$rc"
 }

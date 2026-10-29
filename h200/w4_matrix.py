@@ -17,6 +17,23 @@ ORDER = ['strategyqa', 'aime2026', 'arc_challenge', 'winogrande', 'piqa',
          'arc_easy', 'gpqa_diamond', 'gsm8k', 'math500']
 
 
+def sequence_limit(task_dir, size, requested):
+    """Keep the original scheduler setting when resuming a partial run."""
+    if requested < 1:
+        raise ValueError('Sequence limit must be positive')
+    pointer = task_dir / 'artifacts' / 'run-id.txt'
+    if not pointer.exists():
+        return requested
+    run_id = pointer.read_text().strip()
+    if not run_id or Path(run_id).name != run_id:
+        raise ValueError(f'Invalid run ID in {pointer}')
+    saved = json.loads((pointer.parent / run_id / 'config.json').read_text())
+    limit = saved['actors'][0]['backend_kwargs']['max_num_seqs']
+    if not isinstance(limit, int) or limit < 1:
+        raise ValueError(f'Invalid saved sequence limit: {limit}')
+    return limit
+
+
 def prepare_w4(root, sizes=(8, 32)):
     tasks = prepare(root / 'source', full_benchmarks=True)
     selected = []
@@ -82,9 +99,12 @@ def run(root, worker, stage):
                 if summary.get('completed') != 1 or not summary.get('total_output_tokens'):
                     raise RuntimeError(f'W4 smoke failed: {smoke}')
                 print('SMOKE_OK', worker, size, flush=True)
+            requested_seqs = 32 if size == 8 else int(os.environ.get('LOWBIT_W4_SEQS_32', '16'))
+            seqs = sequence_limit(path.parent, size, requested_seqs)
+            print('SEQ_LIMIT', path.parent.name, seqs, 'requested', requested_seqs, flush=True)
             cmd = [sys.executable, str(REPO / 'scripts/collect_baseline_traces.py'), str(path),
                    '--output', str(path.parent / 'artifacts'), '--max-examples', str(task['count']),
-                   '--max-num-seqs', '32' if size == 8 else '16', '--kv-cache-gib', '80' if size == 8 else '48',
+                   '--max-num-seqs', str(seqs), '--kv-cache-gib', '80' if size == 8 else '48',
                    '--memory-utilization', '0.9', '--open-thinking', '--model-path', staged[size]]
             (path.parent / 'cmd.txt').write_text(subprocess.list2cmdline(cmd) + '\n')
             print('TASK_START', path.parent.name, flush=True)

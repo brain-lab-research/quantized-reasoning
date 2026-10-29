@@ -1,4 +1,8 @@
-from h200.w4_matrix import prepare_w4
+import json
+
+import pytest
+
+from h200.w4_matrix import prepare_w4, sequence_limit
 
 
 def test_full_matrix_excludes_existing_gpqa_and_is_idempotent(tmp_path):
@@ -17,3 +21,16 @@ def test_only_32b_full_benchmarks(tmp_path):
     assert len(tasks) == 8
     assert all(t['size'] == 32 for t in tasks)
     assert 'gpqa_diamond' not in {t['benchmark'] for t in tasks}
+
+
+def test_new_run_uses_requested_limit_and_partial_run_keeps_saved_limit(tmp_path):
+    assert sequence_limit(tmp_path, 32, 32) == 32
+    artifacts = tmp_path / 'artifacts'
+    run = artifacts / 'run-1'
+    run.mkdir(parents=True)
+    (artifacts / 'run-id.txt').write_text('run-1')
+    (run / 'config.json').write_text(json.dumps({'actors': [{'backend_kwargs': {'max_num_seqs': 16}}]}))
+    assert sequence_limit(tmp_path, 32, 32) == 16
+    (artifacts / 'run-id.txt').write_text('../bad')
+    with pytest.raises(ValueError):
+        sequence_limit(tmp_path, 32, 32)

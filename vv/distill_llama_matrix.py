@@ -17,32 +17,35 @@ ORDER = ['strategyqa', 'aime2026', 'arc_challenge', 'winogrande', 'piqa',
          'arc_easy', 'gpqa_diamond', 'gsm8k', 'math500']
 
 
-def prepare_tasks(root):
+def prepare_tasks(root, precision='fp16'):
     tasks = prepare(root / 'source', full_benchmarks=True)
     selected = []
     for task in tasks:
         if task['size'] != 8 or task['precision'] != 'fp16':
             continue
         raw = yaml.safe_load(Path(task['config']).read_text())
-        name = '1029-r1-distill-llama-8b-' + task['benchmark'] + '-fp16'
+        name = '1029-r1-distill-llama-8b-' + task['benchmark'] + '-' + precision
         path = root / name / 'cfg.yaml'
         path.parent.mkdir(parents=True, exist_ok=True)
         raw['experiment_name'] = name
-        raw['actors'][0]['actor_id'] = 'r1_distill_llama_8b_fp16'
-        raw['actors'][0]['model_id'] = MODEL
+        raw['actors'][0]['actor_id'] = 'r1_distill_llama_8b_' + precision
+        raw['actors'][0]['model_id'] = MODEL if precision == 'fp16' else str(root / 'model-gptq2-g32')
+        if precision == 'w2':
+            raw['actors'][0]['quantization'] = 'gptq'
+            raw['actors'][0]['quantization_config'] = {'bits': 2, 'group_size': 32}
         raw['pipeline'][0]['actor_id'] = raw['actors'][0]['actor_id']
         raw['output']['base_dir'] = str(path.parent / 'artifacts')
         if path.exists() and yaml.safe_load(path.read_text()) != raw:
             raise ValueError(f'Existing config differs: {path}')
         path.write_text(yaml.safe_dump(raw, sort_keys=False))
-        selected.append({**task, 'config': str(path)})
+        selected.append({**task, 'config': str(path), 'precision': precision})
     selected.sort(key=lambda t: ORDER.index(t['benchmark']))
-    (root / 'matrix.json').write_text(json.dumps(selected, indent=2))
+    (root / ('matrix-' + precision + '.json')).write_text(json.dumps(selected, indent=2))
     return selected
 
 
-def run(root, model_path):
-    tasks = json.loads((root / 'matrix.json').read_text())
+def run(root, model_path, precision):
+    tasks = json.loads((root / ('matrix-' + precision + '.json')).read_text())
     for task in tasks:
         cfg = Path(task['config'])
         if task_complete(task):
@@ -66,13 +69,14 @@ def main():
     p.add_argument('--root', type=Path, required=True)
     p.add_argument('--prepare', action='store_true')
     p.add_argument('--model-path', type=Path)
+    p.add_argument('--precision', choices=['fp16', 'w2'], default='fp16')
     args = p.parse_args()
     if args.prepare:
-        print('PREPARED_TASKS', len(prepare_tasks(args.root)))
+        print('PREPARED_TASKS', len(prepare_tasks(args.root, args.precision)))
     else:
         if not args.model_path:
             p.error('--model-path is required')
-        run(args.root, args.model_path)
+        run(args.root, args.model_path, args.precision)
 
 
 if __name__ == '__main__':

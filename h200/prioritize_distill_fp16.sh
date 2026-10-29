@@ -47,9 +47,11 @@ for job in "$first_a" "$first_b"; do scontrol hold "$job"; held+=("$job"); done
 while read -r job; do [[ "$job" =~ ^[0-9]+$ ]] && scontrol update JobId="$job" MinMemoryNode=86016; done < "$distill/jobs-b.txt"
 running=()
 for worker in a b; do
-    first=$(head -n 1 "$w4/jobs-$worker-batch32.txt")
-    state=$(squeue -h -j "$first" -o '%T')
-    if [[ "$state" == RUNNING || "$state" == SUSPENDED || "$state" == COMPLETING ]]; then running+=("$first"); fi
+    while read -r job; do
+        [[ "$job" =~ ^[0-9]+$ ]] || { echo INVALID_W4_ID >&2; exit 1; }
+        state=$(squeue -h -j "$job" -o '%T' 2>/dev/null || true)
+        if [[ "$state" == RUNNING || "$state" == SUSPENDED || "$state" == COMPLETING ]]; then running+=("$job"); fi
+    done < "$w4/jobs-$worker-batch32.txt"
 done
 dependency=''
 if ((${#running[@]})); then joined=$(IFS=:; echo "${running[*]}"); dependency="afterany:$joined"; fi

@@ -21,7 +21,8 @@ if [[ ! -f "$root/calibration/teacher-windows.jsonl" ]]; then
     "$python" "$repo/vv/prepare_distill_teacher.py" --root "$root" --count 64
 fi
 if [[ ! -f "$root/model-gptq2-g32/calibration-provenance.json" ]]; then
-    PYTHONPATH="$root/gptq-pydeps:$repo" "$python" "$repo/vv/quantize_distill_gptq2.py" --root "$root"
+    HF_HOME="$root/gptq-hf-cache" HF_MODULES_CACHE="$root/gptq-hf-cache/modules" \
+        PYTHONPATH="$root/gptq-pydeps:$repo" "$python" "$repo/vv/quantize_distill_gptq2.py" --root "$root"
 fi
 "$python" "$repo/vv/smoke_distill_w2_quality.py" --root "$root"
 "$python" "$repo/vv/distill_llama_matrix.py" --root "$root" --prepare --precision w2

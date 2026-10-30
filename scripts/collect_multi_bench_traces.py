@@ -80,6 +80,7 @@ def main():
     p.add_argument("--kv-cache-gib", type=float, default=80)
     p.add_argument("--memory-utilization", type=float, default=0.75)
     p.add_argument("--max-outstanding", type=int, default=32)
+    p.add_argument("--plans-root", type=Path, help="FP16 +P plans indexed by benchmark and example ID")
     p.add_argument("--shared-prefix", help="S3 queue prefix; optional for backward compatibility")
     p.add_argument("--shared-owner", help="Stable owner across retries")
     p.add_argument("--shared-fingerprint", help="Pinned model and decoding fingerprint")
@@ -132,7 +133,7 @@ def main():
         actor = config.actors[0]
         if coordinator:
             sampling = actor.generation_params.model_dump()
-            expected = {'max_new_tokens': 32768, 'temperature': 0.6, 'top_p': 0.95,
+            expected = {'max_new_tokens': 30720 if args.plans_root else 32768, 'temperature': 0.6, 'top_p': 0.95,
                         'top_k': 20, 'repetition_penalty': 1.0,
                         'stop_sequences': ['<|im_end|>', '<|endoftext|>'], 'seed': 42}
             if (actor.quantization != 'gptq' or actor.quantization_config.get('bits') != 2
@@ -148,7 +149,18 @@ def main():
             from scripts.measure_gpqa_rescue import paper_gpqa_choice
             adapter.extract_answer = paper_gpqa_choice
         examples = _load_benchmark_examples(adapter, config.benchmark)
-        format_native_prompts(examples, tokenizer)
+        if args.plans_root:
+            benchmark = task['benchmark']
+            plan_path = args.plans_root / (benchmark + '.jsonl')
+            plan_rows = [json.loads(line) for line in plan_path.read_text(encoding='utf-8').splitlines() if line.strip()]
+            plans = {row['example_id']: row for row in plan_rows}
+            if len(plan_rows) != len(examples) or len(plans) != len(examples):
+                raise ValueError('Incomplete or duplicate plans: ' + str(plan_path))
+            hybrid = REPO / 'configs' / benchmark / 'qwen32b_gptq2bit' / 'hybrid_fp16_gptq2bit.yaml'
+            instruction = yaml.safe_load(hybrid.read_text())['pipeline'][1]['stage_prompt']
+            format_native_prompts(examples, tokenizer, plans, instruction)
+        else:
+            format_native_prompts(examples, tokenizer)
         output.mkdir(parents=True, exist_ok=True)
         store = ArtifactStore(str(output))
         pointer = output / "run-id.txt"

@@ -16,6 +16,10 @@ sys.path.insert(0, str(REPO))
 from scripts.collect_distill_plans import ORDER
 from scripts.collect_multi_bench_traces import repair_trailing_jsonl
 
+# Order by total generated W2 tokens in the completed seed-42 baselines.
+W2_ORDER = ('aime2026', 'gpqa_diamond', 'strategyqa', 'arc_challenge', 'math500',
+            'arc_easy', 'gsm8k', 'piqa', 'winogrande')
+
 
 def main() -> None:
     p = argparse.ArgumentParser()
@@ -23,7 +27,7 @@ def main() -> None:
     p.add_argument('--root', type=Path, required=True)
     p.add_argument('--model-path', required=True)
     args = p.parse_args()
-    tasks = sorted(json.loads(args.manifest.read_text()), key=lambda t: ORDER.index(t['benchmark']))
+    tasks = sorted(json.loads(args.manifest.read_text()), key=lambda t: W2_ORDER.index(t['benchmark']))
     if len(tasks) != 9 or {t['benchmark'] for t in tasks} != set(ORDER):
         raise ValueError('Expected all nine benchmarks')
     for task in tasks:

@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import argparse
+import copy
+import hashlib
 import json
 import sys
 import time
@@ -11,6 +13,48 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
+
+
+def scheduler_compatible(saved, current):
+    """Only scheduler resource settings may change during a handoff."""
+    a, b = copy.deepcopy(saved), copy.deepcopy(current)
+    for config in (a, b):
+        settings = config['actors'][0]['backend_kwargs']
+        for key in ('max_num_seqs', 'gpu_memory_utilization', 'kv_cache_memory_bytes'):
+            settings.pop(key, None)
+    return a == b
+
+
+def repair_trailing_jsonl(path):
+    """Preserve an interrupted final fragment before repairing the append boundary."""
+    if not path.exists():
+        return
+    with path.open('r+b') as f:
+        f.seek(0, 2); end = f.tell()
+        if not end:
+            return
+        f.seek(-1, 2)
+        if f.read(1) == b'\n':
+            return
+        pos = end
+        while pos:
+            start = max(0, pos - 65536); f.seek(start); block = f.read(pos - start)
+            index = block.rfind(b'\n')
+            if index >= 0:
+                pos = start + index + 1
+                break
+            pos = start
+        f.seek(pos); tail = f.read(end - pos)
+        try:
+            json.loads(tail)
+        except (ValueError, UnicodeDecodeError):
+            digest = hashlib.sha256(tail).hexdigest()[:16]
+            backup = path.with_name('.' + path.name + '.interrupted-' + digest)
+            backup.write_bytes(tail)
+            f.seek(pos); f.truncate()
+        else:
+            f.seek(0, 2); f.write(b'\n')
+        f.flush()
 
 
 def main():
@@ -42,9 +86,12 @@ def main():
     p.add_argument("--reverse", action="store_true", help="Consume queue from the end")
     p.add_argument("--ready-barrier", help="S3 key that releases this worker after model initialization")
     p.add_argument("--local-ready-barrier", type=Path, help="Wait for this local file after GPU smoke")
+    p.add_argument("--allow-scheduler-change", action="store_true", help="Permit safe resource-only changes after a local handoff")
     args = p.parse_args()
     if args.max_outstanding < args.max_num_seqs:
         p.error("max-outstanding must be at least max-num-seqs")
+    if args.allow_scheduler_change and not args.local_ready_barrier:
+        p.error('scheduler changes require a local handoff barrier')
     coordinator = None
     if args.shared_prefix:
         if not args.shared_owner or not args.shared_fingerprint:
@@ -107,7 +154,8 @@ def main():
         pointer = output / "run-id.txt"
         if pointer.exists():
             run_id = pointer.read_text().strip()
-            if json.loads((output / run_id / "config.json").read_text()) != config.model_dump():
+            saved_config = json.loads((output / run_id / "config.json").read_text())
+            if saved_config != config.model_dump() and not (args.allow_scheduler_change and scheduler_compatible(saved_config, config.model_dump())):
                 raise ValueError(f"Resume config mismatch: {output}")
         else:
             run_id = store.new_run(config.experiment_name, config.model_dump())
@@ -179,6 +227,38 @@ def main():
         while not args.local_ready_barrier.exists():
             time.sleep(1)
         print('LOCAL_BARRIER_RELEASED', flush=True)
+        if args.allow_scheduler_change:
+            from quantlab.evaluation.judge import judge
+            for ctx in contexts:
+                run_dir = ctx['store'].base_dir / ctx['run_id']
+                for name in ('traces.jsonl', 'judgements.jsonl', 'metrics.jsonl', 'timing.jsonl', 'errors.jsonl'):
+                    repair_trailing_jsonl(run_dir / name)
+                rows = ctx['store'].load_judgements(ctx['run_id'])
+                traces = ctx['store'].load_traces(ctx['run_id'])
+                saved = {r['example_id']: r for r in rows}
+                by_id = {t.example_id: t for t in traces}
+                examples = {e.example_id: e for e in ctx['examples']}
+                if (len(saved) != len(rows) or len(by_id) != len(traces) or not set(saved).issubset(by_id)
+                        or not set(by_id).issubset(examples)):
+                    raise ValueError(f'Invalid pre-handoff artifacts: {run_dir}')
+                for eid, row in saved.items():
+                    if by_id[eid].prompt != examples[eid].prompt or row['ground_truth'] != examples[eid].ground_truth:
+                        raise ValueError(f'Pre-handoff prompt or gold mismatch: {eid}')
+                for eid in set(by_id) - set(saved):
+                    trace = by_id[eid]; example = examples.get(eid)
+                    if not example or trace.prompt != example.prompt or trace.finished_at is None:
+                        raise ValueError(f'Invalid unjudged trace: {eid}')
+                    result = judge(trace, example, ctx['adapter'])
+                    ctx['store'].save_judgement(ctx['run_id'], result)
+                    saved[eid] = {'example_id': eid, 'predicted': result.predicted,
+                                  'ground_truth': result.ground_truth, 'is_correct': result.is_correct,
+                                  'parse_success': result.parse_success}
+                ctx['saved'] = saved
+                remaining = (reversed(ctx['examples']) if args.reverse else ctx['examples'])
+                ctx['pending'] = deque(e for e in remaining if e.example_id not in saved)
+                with (run_dir / 'scheduler-history.jsonl').open('a', encoding='utf8') as f:
+                    f.write(json.dumps({'unix_time': time.time(), 'backend_kwargs': ctx['config'].actors[0].backend_kwargs}) + '\n')
+                print('HANDOFF_REUSED', ctx['config'].benchmark.name, len(saved), flush=True)
     engine = backend._llm.llm_engine
     inflight = {}
     sequence = 0

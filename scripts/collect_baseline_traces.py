@@ -7,6 +7,7 @@ immediately; a slow request never holds up admission of the next prompt.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import sys
 import time
@@ -46,7 +47,7 @@ def format_chat_prompts(examples, tokenizer, benchmark):
         )
 
 
-def format_native_prompts(examples, tokenizer):
+def format_native_prompts(examples, tokenizer, plans=None, plan_instruction=None):
     """Translate the existing benchmark instructions to a model's chat template."""
     from quantlab.core.trace import extract_chat_user_content
     for example in examples:
@@ -56,6 +57,15 @@ def format_native_prompts(examples, tokenizer):
             raise ValueError('Expected a Qwen benchmark system/user prompt')
         system = prompt[len(marker):prompt.index('<|im_end|>')].strip()
         user = extract_chat_user_content(prompt)
+        if plans is not None:
+            from scripts.collect_distill_plans import digest
+            row = plans.get(example.example_id)
+            if not row or row['base_prompt_sha256'] != digest(prompt) or row['ground_truth'] != example.ground_truth:
+                raise ValueError('Plan is missing or mismatches example ' + example.example_id)
+            plan = row['plan'].replace('<think>', '').replace('</think>', '').strip()
+            if not plan:
+                raise ValueError('Empty plan ' + example.example_id)
+            user += '\n\nPlan:\n' + plan + '\n\n' + plan_instruction
         formatted = tokenizer.apply_chat_template(
             [{'role': 'user', 'content': system + '\n\n' + user}],
             tokenize=False, add_generation_prompt=True,
@@ -119,6 +129,8 @@ def main():
     p.add_argument("--model-path", type=str, default=None, help="Local weights; keep canonical model ID in saved config")
     p.add_argument("--chat-template", action="store_true")
     p.add_argument("--native-chat", action="store_true", help="Preserve benchmark instructions in model-native chat format")
+    p.add_argument("--plan-file", type=Path, help="FP16 plans, indexed by example_id")
+    p.add_argument("--plan-instruction", help="Benchmark-specific instruction following the plan")
     p.add_argument("--open-thinking", action="store_true")
     args = p.parse_args()
     raw = yaml.safe_load(args.config.read_text())
@@ -145,6 +157,9 @@ def main():
         raw["description"] = raw.get("description", "") + " Prompt recipe: tokenizer_chat."
     if args.native_chat:
         raw["description"] = raw.get("description", "") + " Prompt recipe: native_chat_explicit_token_ids_v2."
+    if args.plan_file:
+        fingerprint = hashlib.sha256(args.plan_file.read_bytes()).hexdigest()
+        raw["description"] += f" FP16 plan SHA256: {fingerprint}; instruction: {args.plan_instruction!r}."
     if args.open_thinking:
         raw["description"] = raw.get("description", "") + " Original-paper open-think scaffold."
     config = ExperimentConfig.model_validate(raw)
@@ -169,7 +184,17 @@ def main():
             raise ValueError('native-chat cannot be combined with other prompt recipes')
         from transformers import AutoTokenizer
         tokenizer = AutoTokenizer.from_pretrained(args.model_path or config.actors[0].model_id)
-        format_native_prompts(examples, tokenizer)
+        plans = None
+        if args.plan_file:
+            if not args.plan_instruction:
+                raise ValueError('plan instruction is required')
+            rows = [json.loads(line) for line in args.plan_file.read_text(encoding='utf-8').splitlines() if line.strip()]
+            plans = {row['example_id']: row for row in rows}
+            if len(rows) != len(plans) or len(plans) != len(examples):
+                raise ValueError('Plan file must contain exactly one plan for every example')
+        format_native_prompts(examples, tokenizer, plans, args.plan_instruction)
+    elif args.plan_file:
+        raise ValueError('plan file requires native chat')
     reused = {}
     for reuse_root in args.reuse_root:
         reused.update(reuse_judgements(reuse_root, config, examples))

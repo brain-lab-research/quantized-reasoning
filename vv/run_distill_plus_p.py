@@ -59,14 +59,20 @@ def main() -> None:
         query = subprocess.check_output(['nvidia-smi', '--id=' + os.environ['CUDA_VISIBLE_DEVICES'],
               '--query-gpu=memory.free', '--format=csv,noheader,nounits'], text=True)
         free_mib = int(query.strip())
-        kv, seq, utilization = (80, 32, '0.75') if free_mib >= 100000 else (32, 16, '0.27')
+        if free_mib >= 132000:
+            kv, seq, utilization = 112, 32, '0.90'
+        elif free_mib >= 100000:
+            kv, seq, utilization = 80, 32, '0.75'
+        else:
+            kv, seq, utilization = 32, 16, '0.27'
         if free_mib < 47000:
             raise RuntimeError(f'Insufficient GPU memory to start W2 safely: {free_mib} MiB')
         cmd = [sys.executable, str(REPO / 'scripts/collect_baseline_traces.py'), str(cfg_path),
                '--output', str(path / 'artifacts'), '--max-examples', str(task['count']),
                '--max-tokens', '30720', '--max-num-seqs', str(seq), '--kv-cache-gib', str(kv),
                '--memory-utilization', utilization, '--native-chat', '--model-path', args.model_path,
-               '--plan-file', str(plan_file), '--plan-instruction', instruction]
+               '--plan-file', str(plan_file), '--plan-instruction', instruction,
+               '--allow-scheduler-change']
         (path / 'cmd.json').write_text(json.dumps(cmd, indent=2))
         print('W2_START', benchmark, 'free_mib', free_mib, 'kv_gib', kv, 'seqs', seq, flush=True)
         with (path / 'run.log').open('a') as log:

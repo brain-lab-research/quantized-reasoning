@@ -131,6 +131,7 @@ def main():
     p.add_argument("--native-chat", action="store_true", help="Preserve benchmark instructions in model-native chat format")
     p.add_argument("--plan-file", type=Path, help="FP16 plans, indexed by example_id")
     p.add_argument("--plan-instruction", help="Benchmark-specific instruction following the plan")
+    p.add_argument("--allow-scheduler-change", action="store_true", help="Allow resource-only scheduler changes on resume")
     p.add_argument("--open-thinking", action="store_true")
     args = p.parse_args()
     raw = yaml.safe_load(args.config.read_text())
@@ -204,7 +205,11 @@ def main():
     if pointer.exists():
         run_id = pointer.read_text().strip()
         saved = json.loads((args.output / run_id / "config.json").read_text())
-        if saved != config.model_dump():
+        same = saved == config.model_dump()
+        if not same and args.allow_scheduler_change:
+            from scripts.collect_multi_bench_traces import scheduler_compatible
+            same = scheduler_compatible(saved, config.model_dump())
+        if not same:
             raise ValueError("Resume config mismatch")
     else:
         run_id = store.new_run(config.experiment_name, config.model_dump())

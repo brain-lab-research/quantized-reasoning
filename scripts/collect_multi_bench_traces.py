@@ -41,6 +41,7 @@ def main():
     p.add_argument("--shared-fingerprint", help="Pinned model and decoding fingerprint")
     p.add_argument("--reverse", action="store_true", help="Consume queue from the end")
     p.add_argument("--ready-barrier", help="S3 key that releases this worker after model initialization")
+    p.add_argument("--local-ready-barrier", type=Path, help="Wait for this local file after GPU smoke")
     args = p.parse_args()
     if args.max_outstanding < args.max_num_seqs:
         p.error("max-outstanding must be at least max-num-seqs")
@@ -134,7 +135,7 @@ def main():
     backend = VLLMBackend(args.model_path, precision=PrecisionMode(actor.precision),
                           quantization=QuantizationMethod(actor.quantization), **actor.backend_kwargs)
     backend.load()
-    if args.ready_barrier:
+    if args.ready_barrier or args.local_ready_barrier:
         # Validate the replacement engine before the old VV process is stopped.
         probe = tokenizer.apply_chat_template([{'role': 'user', 'content': 'Compute 2 + 3.'}],
                                               tokenize=False, add_generation_prompt=True)
@@ -174,6 +175,10 @@ def main():
                     raise
                 time.sleep(2)
         print('BARRIER_RELEASED', flush=True)
+    if args.local_ready_barrier:
+        while not args.local_ready_barrier.exists():
+            time.sleep(1)
+        print('LOCAL_BARRIER_RELEASED', flush=True)
     engine = backend._llm.llm_engine
     inflight = {}
     sequence = 0
